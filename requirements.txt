@@ -1,0 +1,10 @@
+numpy
+torch
+torchvision
+h5py
+plyfile
+matplotlib
+transforms3d
+tensorboardX
+tqdm
+scikit-learn

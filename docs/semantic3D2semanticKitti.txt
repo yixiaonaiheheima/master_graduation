@@ -1,0 +1,8 @@
+man made terrain -> (all) ground related
+natural terrain + low vegetation -> terrain
+high vegetation -> vegetation + trunk
+buildings -> buildings
+remaining hardscape -> fence + pole + traffic sign
+cars and trucks -> vehicle
+abandoned in semantic3D: scanning artifacts + outlier
+abandoned in semanticKitti: other_structure + (all) human + other-object + outlier
