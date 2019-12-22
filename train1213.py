@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 import sys
 import argparse
-import osaaa
+import os
 import numpy as np
 import random
 import torch
