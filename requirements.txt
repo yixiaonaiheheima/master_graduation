@@ -8,3 +8,4 @@ transforms3d
 tensorboardX
 tqdm
 scikit-learn
+open3d

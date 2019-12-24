@@ -50,10 +50,14 @@ class PointnetCriterion(nn.Module):
         :arg
         seg_prob: tensor(B, N, num_class),  log-probabilities of each class
         seg_label: Long tensor(B, N)
-        :return (B
+        :return scalar
         """
         # semantic segmentation loss
-        seg_loss = F.nll_loss(seg_prob.permute(0, 2, 1), seg_label, reduction='none')  # (B, N)
+        if len(seg_prob.shape) == 3:
+            B, N, num_classes = seg_prob.shape
+            seg_prob = seg_prob.view(B*N, num_classes)
+            seg_label = seg_label.view(B*N)
+        seg_loss = F.nll_loss(seg_prob, seg_label, reduction='none')  # (B,)
         seg_loss = torch.mean(seg_loss)  # scalar
 
         return seg_loss

@@ -128,8 +128,12 @@ if is_list_of_h5_list:
 else:
     filelist_train = semantic3d_filelist
 semantic3d_data_train, _, semantic3d_data_num_train, semantic3d_label_train, _ = data_utils.load_seg(semantic3d_filelist_train)
-semantic3d_data_val, _, semantic3d_data_num_val, semantic3d_label_val, _ = data_utils.load_seg(semantic3d_val_list, 3)
-npm3d_data_val, _, npm3d_data_num_val, npm3d_label_val, _ = data_utils.load_seg(npm3d_val_list, 3)
+semantic3d_data_val, _, semantic3d_data_num_val, semantic3d_label_val, _ = data_utils.load_seg(semantic3d_val_list, 1)
+npm3d_data_val, _, npm3d_data_num_val, npm3d_label_val, _ = data_utils.load_seg(npm3d_val_list, 1)
+
+unique, unique_count = np.unique(semantic3d_label_train, return_counts=True)
+all_count = np.sum(unique_count)
+count_norm = unique_count / all_count
 
 # shuffle
 semantic3d_data_train, semantic3d_label_train, semantic3d_label_train = data_utils.grouped_shuffle([semantic3d_data_train, semantic3d_data_num_train, semantic3d_label_train])
@@ -236,9 +240,9 @@ def train():
             }, os.path.join(root_folder, 'checkpoint_iter{}.tar'.format(batch_idx_train)))
             print("Model Saved As " + 'checkpoint_iter{}.tar'.format(batch_idx_train))
 
-            val_one_epoch(model,
-                          [npm3d_data_val, npm3d_data_num_val, npm3d_label_val, npm3d_batch_num_val,
-                           npm3d_num_val, 'npm3d'], val_writer, device, batch_idx_train)
+            # val_one_epoch(model,
+            #               [npm3d_data_val, npm3d_data_num_val, npm3d_label_val, npm3d_batch_num_val,
+            #                npm3d_num_val, 'npm3d'], val_writer, device, batch_idx_train)
             val_one_epoch(model,
                           [semantic3d_data_val, semantic3d_data_num_val, semantic3d_label_val, semantic3d_batch_num_val,
                            semantic3d_num_val, 'semantic3d'], val_writer, device, batch_idx_train)
@@ -302,7 +306,7 @@ def val_one_epoch(model, dataset_relevant, val_writer, device, batch_idx_train):
     else:
         val_classes = 8
     CM = ConfusionMatrix(val_classes)
-    for batch_val_idx in tqdm(range(batch_num_val)):
+    for batch_val_idx in tqdm(range(batch_num_val // 10)):
         start_idx = BATCH_SIZE_VAL * batch_val_idx
         end_idx = min(start_idx + BATCH_SIZE_VAL, num_val)
         batch_size_val = end_idx - start_idx
