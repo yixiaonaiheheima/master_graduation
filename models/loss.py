@@ -55,7 +55,7 @@ class PointnetCriterion(nn.Module):
         # semantic segmentation loss
         if len(seg_prob.shape) == 3:
             B, N, num_classes = seg_prob.shape
-            seg_prob = seg_prob.view(B*N, num_classes)
+            seg_prob = seg_prob.contiguous().view(B*N, num_classes)
             seg_label = seg_label.view(B*N)
         seg_loss = F.nll_loss(seg_prob, seg_label, reduction='none')  # (B,)
         seg_loss = torch.mean(seg_loss)  # scalar

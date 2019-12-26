@@ -8,5 +8,5 @@
 8 car -> 8 cars and trucks
 9 natural - vegetation -> 2 natural terrain + 3 high vegetation + 4 low vegetation
 abandonment:
-npm3d: 6 pedestrian
+npm3d: 7 pedestrian
 semantic3d: 7 scanning artifacts

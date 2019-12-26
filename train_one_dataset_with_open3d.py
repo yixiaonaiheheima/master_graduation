@@ -1,6 +1,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from data.semantic_dataset import SemanticDataset
+from data.npm_dataset import NpmDataset
 import sys
 import argparse
 import os
@@ -28,7 +30,6 @@ import multiprocessing as mp
 import argparse
 import time
 from datetime import datetime
-from data.semantic_dataset import SemanticDataset
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
@@ -44,7 +45,7 @@ parser.add_argument('--batch_size_train', type=int, default=32,
                     help='Batch Size during training [default: 32]')
 parser.add_argument('--batch_size_val', type=int, default=32,
                     help='Batch Size during training [default: 32]')
-parser.add_argument('--max_epoch', type=int, default=100,
+parser.add_argument('--max_epoch', type=int, default=500,
                     help='Epoch to run [default: 100]')
 parser.add_argument('--init_learning_rate',
                     type=float, default=0.001, help='Initial learning rate [default: 0.001]')
@@ -72,7 +73,8 @@ parser.add_argument('--no_timestamp_folder', help='Dont save to timestamp folder
 parser.add_argument('--model', '-m', help='Model to use', required=True)
 parser.add_argument('--use_normals', action='store_true')
 parser.add_argument("--train_set", default="train", help="train, train_full")
-parser.add_argument("--config_file", default="semantic_no_color.json", help="config file path")
+# parser.add_argument("--config_file", default="semantic_no_color.json", help="config file path")
+parser.add_argument("--dataset_name", default="npm", help="npm, semantic")
 args = parser.parse_args()
 
 GPU_ID = args.gpu_id
@@ -91,7 +93,47 @@ NO_TIMESTAMP_FOLDER = args.no_timestamp_folder
 MODEL_NAME = args.model
 LOG = args.log
 USE_NORMALS = args.use_normals
-PARAMS = json.loads(open(args.config_file).read())
+DATASET_NAME = args.dataset_name
+if DATASET_NAME == "npm":
+    PARAMS = json.loads(open("npm.json").read())
+    # Import dataset
+    TRAIN_DATASET = NpmDataset(
+        num_points_per_sample=PARAMS["num_point"],
+        split=args.train_set,
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        path=PARAMS["data_path"],
+    )
+    VALIDATION_DATASET = NpmDataset(
+        num_points_per_sample=PARAMS["num_point"],
+        split="validation",
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        path=PARAMS["data_path"],
+    )
+elif DATASET_NAME == "semantic":
+    PARAMS = json.loads(open("semantic_no_color.json").read())
+    # Import dataset
+    TRAIN_DATASET = SemanticDataset(
+        num_points_per_sample=PARAMS["num_point"],
+        split=args.train_set,
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_color=PARAMS["use_color"],
+        path=PARAMS["data_path"],
+    )
+    VALIDATION_DATASET = SemanticDataset(
+        num_points_per_sample=PARAMS["num_point"],
+        split="validation",
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_color=PARAMS["use_color"],
+        path=PARAMS["data_path"],
+    )
+else:
+    raise ValueError
+
+num_classes = TRAIN_DATASET.num_classes
 
 train_augmentations = get_augmentations_from_list(TRAIN_AUGMENTATION)
 os.environ["CUDA_VISIBLE_DEVICES"] = str(GPU_ID)
@@ -104,7 +146,7 @@ if GPU_ID >= 0:
 else:
     device = torch.device("cpu")
 
-SAVE_FOLDER = 'train_log/' + MODEL_NAME
+SAVE_FOLDER = 'train_log/' + MODEL_NAME + '_' + DATASET_NAME
 if not NO_TIMESTAMP_FOLDER:
     time_string = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     root_folder = os.path.join(SAVE_FOLDER, '%s_%s_%d' % (MODEL_NAME, time_string, os.getpid()))
@@ -120,45 +162,16 @@ print('PID:', os.getpid())
 
 print(args)
 
-# Import dataset
-TRAIN_DATASET = SemanticDataset(
-    num_points_per_sample=PARAMS["num_point"],
-    split=args.train_set,
-    box_size_x=PARAMS["box_size_x"],
-    box_size_y=PARAMS["box_size_y"],
-    use_color=PARAMS["use_color"],
-    path=PARAMS["data_path"],
-)
-VALIDATION_DATASET = SemanticDataset(
-    num_points_per_sample=PARAMS["num_point"],
-    split="validation",
-    box_size_x=PARAMS["box_size_x"],
-    box_size_y=PARAMS["box_size_y"],
-    use_color=PARAMS["use_color"],
-    path=PARAMS["data_path"],
-)
-num_classes = TRAIN_DATASET.num_classes
-
-# Start logging
-LOG_FOUT = open(os.path.join(PARAMS["logdir"], "log_train.txt"), "w")
-EPOCH_CNT = 0
-
-
-def log_string(out_str):
-    LOG_FOUT.write(out_str + "\n")
-    LOG_FOUT.flush()
-    print(out_str)
-
 
 def get_batch(split):
-    np.random.seed(40)
+    np.random.seed()
     if split == "train":
         return TRAIN_DATASET.sample_batch_in_all_files(
-            PARAMS["batch_size"], augment=True
+            BATCH_SIZE_TRAIN, augment=False
         )
     else:
         return VALIDATION_DATASET.sample_batch_in_all_files(
-            PARAMS["batch_size"], augment=False
+            BATCH_SIZE_VAL, augment=False
         )
 
 
@@ -207,10 +220,9 @@ def init_stacking():
         stack_train: mp.Queue, use stack_train.get() to read a batch
     """
     # Queues that contain several batches in advance
-    num_train_batches = TRAIN_DATASET.get_num_batches(PARAMS["batch_size"])
-    num_validation_batches = VALIDATION_DATASET.get_num_batches(
-        PARAMS["batch_size"]
-    )
+    num_train_batches = TRAIN_DATASET.get_num_batches(BATCH_SIZE_TRAIN)
+    num_validation_batches = VALIDATION_DATASET.get_num_batches(BATCH_SIZE_VAL)
+    print("we have %d batches for train and %d batches for validation in one epoch" % (num_train_batches, num_validation_batches))
     stack_train = mp.Queue(num_train_batches)
     stack_validation = mp.Queue(num_validation_batches)
     stacker = mp.Process(
@@ -277,7 +289,7 @@ def train():
         optimizer = None
         exit(0)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 100, gamma=0.95)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 2000, gamma=0.95)
 
     if len(RESUME_MODEL) > 0:
         resume_path = os.path.join(root_folder, RESUME_MODEL)
@@ -300,8 +312,8 @@ def train():
     log_string('{}-Parameter number: {:d}.'.format(datetime.now(), parameter_num))
 
     CM = ConfusionMatrix(num_classes)
-    batch_num = TRAIN_DATASET.get_num_batches(PARAMS["batch_size"]) * NUM_EPOCH
-    num_val = VALIDATION_DATASET.get_num_batches(PARAMS["batch_size"]) * NUM_EPOCH
+    batch_num = TRAIN_DATASET.get_num_batches(BATCH_SIZE_TRAIN) * NUM_EPOCH
+    num_val = VALIDATION_DATASET.get_num_batches(BATCH_SIZE_VAL)
     stacker, stack_validation, stack_train = init_stacking()
     for batch_idx_train in range(start_iter, batch_num):
         # validation
@@ -324,9 +336,7 @@ def train():
             log_string('train mIOU: %f' % mIOU)
             log_string('train OA: %f' % OA)
             CM.__init__(num_classes)
-
-            val_one_epoch(model, [stack_validation, num_val, 'npm3d'], val_writer, device, batch_idx_train, criterion)
-            criterion = criterion.train()
+            val_one_epoch(model, [stack_validation, num_val, DATASET_NAME], val_writer, device, batch_idx_train, criterion)
 
         # data prepare
         batch_data, batch_label, batch_weights = stack_train.get()
@@ -335,44 +345,45 @@ def train():
         # batch_data = basics_util.normalize_data(batch_data)  # (B, sample_num, 3)
         # convert to tensor
         points_tensor = torch.from_numpy(batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
-        batch_label = torch.from_numpy(batch_label).to(device, dtype=torch.long)  # (B, sample_num)
+        batch_label_tensor = torch.from_numpy(batch_label).to(device, dtype=torch.long)  # (B, sample_num)
 
         # run model and then optimize
         scheduler.optimizer.zero_grad()
+        model = model.train()
         points_prob = run_model(model, points_tensor.permute(0, 2, 1))  # (B, sample_num, num_classes), (B, sample_num, 3)
         _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
-        points_pred = points_pred.cpu().numpy()
-        new_class_labels = batch_label.flatten()
-        new_class_pred = points_pred.flatten()
-        CM.count_predicted(new_class_labels, new_class_pred)
-        batch_loss = criterion(points_prob, batch_label)
+        batch_loss = criterion(points_prob, batch_label_tensor)
         batch_loss.backward()
         scheduler.optimizer.step()
         scheduler.step()
         log_string('iter: %d, Loss: %f' % (batch_idx_train, batch_loss))
         train_writer.add_scalar('Loss', batch_loss.cpu().item(), batch_idx_train)
+        points_pred = points_pred.cpu().numpy()
+        new_class_labels = batch_label.flatten()
+        new_class_pred = points_pred.flatten()
+        CM.count_predicted(new_class_labels, new_class_pred)
 
 
 def val_one_epoch(model, dataset_relevant, val_writer, device, batch_idx_train, criterion):
-    criterion = criterion.eval()
     stack_validation, batch_num_val, dataset_name = dataset_relevant
     val_classes = num_classes
     CM = ConfusionMatrix(val_classes)
     batch_loss_count = 0
     batch_num_count = 0
-    for batch_val_idx in tqdm(range(batch_num_val // 100)):
-        start_idx = BATCH_SIZE_VAL * batch_val_idx
-
+    for batch_val_idx in range(batch_num_val // 10):
         batch_data, batch_label, batch_weights = stack_validation.get()
         # normalize data
         # batch_data = basics_util.normalize_data(batch_data)  # (B, sample_num, 3)
         # convert to tensor
-        batch_data = torch.from_numpy(batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
-        batch_label = torch.from_numpy(batch_label).to(device, dtype=torch.long)
+        batch_data_tensor = torch.from_numpy(batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
+        batch_label_tensor = torch.from_numpy(batch_label).to(device, dtype=torch.long)
 
-        points_prob = run_model(model, batch_data.permute(0, 2, 1), validate=True)  # (B, sample_num, num_classes)
-        batch_loss = criterion(points_prob, batch_data)
-        batch_loss_count += batch_loss
+        model = model.eval()
+        with torch.no_grad():
+            points_prob = run_model(model, batch_data_tensor.permute(0, 2, 1))  # (B, sample_num, num_classes)
+            batch_loss = criterion(points_prob, batch_label_tensor)
+        # print("batch_val_idx, loss", batch_val_idx, batch_loss)
+        batch_loss_count += batch_loss.cpu().numpy()
         batch_num_count += 1
         _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
         points_pred = points_pred.cpu().numpy()  # (B, sample_num)
@@ -382,7 +393,7 @@ def val_one_epoch(model, dataset_relevant, val_writer, device, batch_idx_train, 
     mIOU = CM.get_average_intersection_union()
     OA = CM.get_overall_accuracy()
     ave_loss = batch_loss_count / batch_num_count
-    ave_loss = ave_loss.cpu().numpy()
+    ave_loss = ave_loss
     log_string('average val loss is %f' % ave_loss)
     log_string('%s mIOU: %f' % (dataset_name, mIOU))
     log_string('%s OA: %f' % (dataset_name, OA))
@@ -390,31 +401,16 @@ def val_one_epoch(model, dataset_relevant, val_writer, device, batch_idx_train, 
     val_writer.add_scalar('%s OA' % dataset_name, OA, batch_idx_train)
 
 
-def run_model(model, P, validate=False):
-
-    if not validate:
-        model = model.train()
-        if MODEL_NAME == 'pointnet':
-            res, _, _ = model(P)
-        elif MODEL_NAME == 'pointnet2':
-            res, _ = model(P)
-        elif MODEL_NAME == 'pointcnn':
-            P_permute = P.permute(0, 2, 1)
-            res = model(P_permute, P_permute)
-        else:
-            raise ValueError
+def run_model(model, P):
+    if MODEL_NAME == 'pointnet':
+        res, _, _ = model(P)
+    elif MODEL_NAME == 'pointnet2':
+        res, _ = model(P)
+    elif MODEL_NAME == 'pointcnn':
+        P_permute = P.permute(0, 2, 1)
+        res = model(P_permute, P_permute)
     else:
-        model = model.eval()
-        with torch.no_grad():
-            if MODEL_NAME == 'pointnet':
-                res, _, _ = model(P)
-            elif MODEL_NAME == 'pointnet2':
-                res, _ = model(P)
-            elif MODEL_NAME == 'pointcnn':
-                P_permute = P.permute(0, 2, 1)
-                res = model(P_permute, P_permute)
-            else:
-                raise ValueError
+        raise ValueError
     return res
 
 

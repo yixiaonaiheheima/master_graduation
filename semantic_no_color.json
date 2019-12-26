@@ -4,8 +4,7 @@
     "data_path": "/home/yss/sda1/yzl/open3d_pointnet2/dataset/semantic_downsampled",
 
     "max_epoch": 500,
-    "num_point": 8192,
-    "batch_size": 16,
+    "num_point": 4096,
     "use_color": 0,
 
     "optimizer": "adam",
