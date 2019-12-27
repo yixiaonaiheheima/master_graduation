@@ -8,11 +8,6 @@ import os
 import numpy as np
 import torch
 from data.augment import get_augmentations_from_list
-from models.pointnet import PointNetDenseCls
-from models.loss import PointnetCriterion
-from models.pointnet2 import PointNet2Seg
-from models.pointSemantic import PointSemantic
-from pointcnn_utils.pointcnn import PointCNN_seg
 from tensorboardX import SummaryWriter
 from torch.backends import cudnn
 import json
@@ -22,6 +17,7 @@ import argparse
 import time
 from datetime import datetime
 from utils import metric
+from utils.model_util import run_model, select_model
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
@@ -31,8 +27,7 @@ cudnn.enabled = True
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--gpu_id', type=int, default=1,
-                    help='gpu id for network, -1 will use cpu')
+parser.add_argument('--gpu_id', type=int, default=1, help='gpu id for network')
 parser.add_argument('--batch_size_train', type=int, default=16,
                     help='Batch Size during training [default: 32]')
 parser.add_argument('--batch_size_val', type=int, default=16,
@@ -64,7 +59,7 @@ parser.add_argument('--log', help='Log to FILE in save folder; use - for stdout 
                     default='log.txt')
 parser.add_argument('--num_point', help='downsample number before feed to net', type=int, default=8192)
 parser.add_argument('--step_val', help='downsample number before feed to net', type=int, default=200000)
-parser.add_argument('--model', '-m', help='Model to use', required=True)
+parser.add_argument('--model_name', '-m', help='Model to use', required=True)
 parser.add_argument('--use_normals', action='store_true')
 parser.add_argument("--train_set", default="train", help="train, train_full")
 parser.add_argument("--config_file", default="semantic.json", help="config file path")
@@ -72,7 +67,7 @@ parser.add_argument("--dataset_name", default="semantic", help="npm, semantic")
 args = parser.parse_args()
 
 GPU_ID = args.gpu_id
-NUM_EPOCH = args.max_epoch
+MAX_EPOCH = args.max_epoch
 BATCH_SIZE_TRAIN = args.batch_size_train
 BATCH_SIZE_VAL = args.batch_size_val
 STEP_VAL = args.step_val
@@ -83,7 +78,7 @@ MODEL_OPTIMIZER = args.optimizer
 INIT_LEARNING_RATE = args.init_learning_rate
 LR_DECAY_STEP = args.lr_decay_step
 LR_DECAY_RATE = args.lr_decay_rate
-MODEL_NAME = args.model
+MODEL_NAME = args.model_name
 LOG = args.log
 NUM_POINT = args.num_point
 USE_NORMALS = args.use_normals
@@ -254,40 +249,9 @@ def init_stacking():
     return stacker, stack_validation, stack_train
 
 
-def run_model(model, input_tensor):
-    """
-
-    :param model:
-    :param input_tensor: tensor(B, N, C)
-    :return:
-    """
-    points = input_tensor[:, :, :3]
-    if PARAMS['use_color']:
-        features = input_tensor[:, :, 3:]
-    else:
-        features = points
-    if MODEL_NAME == 'pointnet':
-        res, _, _ = model(points.permute(0, 2, 1))
-    elif MODEL_NAME == 'pointnet2':
-        if PARAMS['use_color']:
-            res, _ = model(input_tensor.permute(0, 2, 1))
-        else:
-            res, _ = model(points.permute(0, 2, 1))
-    elif MODEL_NAME == 'pointcnn':
-        res = model(points, features)
-    elif MODEL_NAME == 'pointsemantic':
-        if PARAMS['use_color']:
-            res = model(input_tensor)
-        else:
-            res = model(points)
-    else:
-        raise ValueError
-    return res
-
-
 def train_one_epoch(stack, scheduler, model, criterion, device, train_writer):
     global EPOCH_CNT
-    num_batches = TRAIN_DATASET.get_num_batches(PARAMS["batch_size"])
+    num_batches = TRAIN_DATASET.get_num_batches(BATCH_SIZE_TRAIN)
 
     log_string(str(datetime.now()))
     update_progress(0)
@@ -307,7 +271,7 @@ def train_one_epoch(stack, scheduler, model, criterion, device, train_writer):
         batch_label_tensor = torch.from_numpy(batch_label).to(device, dtype=torch.long)  # (B, sample_num)
         scheduler.optimizer.zero_grad()
         model = model.train()
-        points_prob = run_model(model, points_tensor)  # (B, sample_num, num_classes), (B, sample_num, 3)
+        points_prob = run_model(model, points_tensor, PARAMS, MODEL_NAME)  # (B, sample_num, num_classes), (B, sample_num, 3)
         batch_loss = criterion(points_prob, batch_label_tensor)
         _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
         batch_loss.backward()
@@ -335,7 +299,7 @@ def train_one_epoch(stack, scheduler, model, criterion, device, train_writer):
 
 
 def eval_one_epoch(stack, model, criterion, device, val_writer):
-    num_batches = VALIDATION_DATASET.get_num_batches(PARAMS["batch_size"])
+    num_batches = VALIDATION_DATASET.get_num_batches(BATCH_SIZE_VAL)
 
     # Reset metrics
     loss_sum = 0
@@ -357,7 +321,7 @@ def eval_one_epoch(stack, model, criterion, device, val_writer):
         batch_label_tensor = torch.from_numpy(batch_label).to(device, dtype=torch.long)  # (B, sample_num)
         model = model.eval()
         with torch.no_grad():
-            points_prob = run_model(model, points_tensor)  # (B, sample_num, num_classes), (B, sample_num, 3)
+            points_prob = run_model(model, points_tensor, PARAMS, MODEL_NAME)  # (B, sample_num, num_classes), (B, sample_num, 3)
             batch_loss = criterion(points_prob, batch_label_tensor)
         _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
 
@@ -398,23 +362,7 @@ def train():
         device = torch.device("cuda:%d" % GPU_ID)
     else:
         raise ValueError("GPU not found!")
-    if MODEL_NAME == 'pointnet':
-        model = PointNetDenseCls(num_classes)
-        criterion = PointnetCriterion()
-    elif MODEL_NAME == 'pointnet2':
-        if PARAMS['use_color']:
-            model = PointNet2Seg(num_classes, with_rgb=PARAMS['use_color'])
-        else:
-            model = PointNet2Seg(num_classes)
-        criterion = PointnetCriterion()
-    elif MODEL_NAME == 'pointcnn':
-        model = PointCNN_seg(num_classes)
-        criterion = PointnetCriterion()
-    elif MODEL_NAME == 'pointsemantic':
-        model = PointSemantic(num_classes, with_rgb=PARAMS['use_color'])
-        criterion = PointnetCriterion()
-    else:
-        raise ValueError
+    model, criterion = select_model(MODEL_NAME, num_classes, PARAMS)
     model = model.to(device)
     criterion = criterion.to(device)
 
@@ -447,9 +395,9 @@ def train():
     # start training
     stacker, stack_validation, stack_train = init_stacking()
     best_acc = 0
-    for epoch in range(start_epoch, PARAMS["max_epoch"]):
+    for epoch in range(start_epoch, MAX_EPOCH):
         print("in epoch", epoch)
-        print("max_epoch", PARAMS["max_epoch"])
+        print("max_epoch", MAX_EPOCH)
 
         log_string("**** EPOCH %03d ****" % (epoch + 1))
         sys.stdout.flush()

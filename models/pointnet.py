@@ -91,11 +91,15 @@ class PointNetfeat(nn.Module):
         if input_transform:
             self.stn = STN3d()
         self.conv1 = torch.nn.Conv1d(3, 64, 1)
-        self.conv2 = torch.nn.Conv1d(64, 128, 1)
-        self.conv3 = torch.nn.Conv1d(128, 1024, 1)
+        self.conv2 = torch.nn.Conv1d(64, 64, 1)
+        self.conv3 = torch.nn.Conv1d(64, 64, 1)
+        self.conv4 = torch.nn.Conv1d(64, 128, 1)
+        self.conv5 = torch.nn.Conv1d(128, 1024, 1)
         self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(1024)
+        self.bn2 = nn.BatchNorm1d(64)
+        self.bn3 = nn.BatchNorm1d(64)
+        self.bn4 = nn.BatchNorm1d(128)
+        self.bn5 = nn.BatchNorm1d(1024)
         self.global_feat = global_feat
         self.feature_transform = feature_transform
         if self.feature_transform:
@@ -117,6 +121,7 @@ class PointNetfeat(nn.Module):
             x = torch.bmm(x, trans)  # (b, n, 3)
             x = x.transpose(2, 1)  # (b, 3, n)
         x = F.relu(self.bn1(self.conv1(x)))  # (b, 64, n)
+        x = F.relu(self.bn2(self.conv2(x)))  # (b, 64, n)
 
         if self.feature_transform:
             trans_feat = self.fstn(x)  # (b, 64, 64)
@@ -124,15 +129,16 @@ class PointNetfeat(nn.Module):
             x = torch.bmm(x, trans_feat)  # (b, n, 64)
             x = x.transpose(2,1)  # (b, 64, n)
         pointfeat = x  # (b, 64, n)
-        x = F.relu(self.bn2(self.conv2(x)))  # (b, 128, n)
-        x = self.bn3(self.conv3(x))  # (b, 1024, n)
+        x = F.relu(self.bn3(self.conv3(x)))  # (b, 128, n)
+        x = F.relu(self.bn4(self.conv4(x)))  # (b, 128, n)
+        x = F.relu(self.bn5(self.conv5(x)))  # (b, 1024, n)
         x = torch.max(x, 2, keepdim=True)[0]  # (b, 1024, 1)
         x = x.view(-1, 1024)  # (b, 1024)
         if self.global_feat:
-            return x
+            return x  # (b, 1024)
         else:
             x = x.view(-1, 1024, 1).repeat(1, 1, n_pts)  # (b, 1024, n)
-            return torch.cat([x, pointfeat], 1)  # (b, 1088, n), (b, 3, 3), (b, 64, 64)
+            return torch.cat([x, pointfeat], 1)  # (b, 1088, n)
 
 
 class PointNetCls(nn.Module):
@@ -193,9 +199,8 @@ class PointNetCls(nn.Module):
 
 
 class PointNetDenseCls(nn.Module):
-    def __init__(self, k=2, with_rgb=False, feature_transform=False):
+    def __init__(self, k=2, feature_transform=False):
         super(PointNetDenseCls, self).__init__()
-        self.with_rgb = with_rgb
         self.k = k
         self.feature_transform = feature_transform
         self.feat = PointNetfeat(global_feat=False, feature_transform=feature_transform, input_transform=False)
@@ -219,7 +224,7 @@ class PointNetDenseCls(nn.Module):
         batchsize = x.size()[0]
         n_pts = x.size()[2]
         x = x[:, :3, :]  # (b, 3, n)
-        x = self.feat(x)
+        x = self.feat(x)  # (b, 1088, n)
         x = F.relu(self.bn1(self.conv1(x)))  # (b, 512, n)
         x = F.relu(self.bn2(self.conv2(x)))  # (b, 256, n)
         x = F.relu(self.bn3(self.conv3(x)))  # (b, 128, n)
@@ -238,6 +243,7 @@ def feature_transform_regularizer(trans):
         I = I.cuda()
     loss = torch.mean(torch.norm(torch.bmm(trans, trans.transpose(2,1)) - I, dim=(1,2)))
     return loss
+
 
 if __name__ == '__main__':
     sim_data = Variable(torch.rand(32,3,2500))

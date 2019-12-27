@@ -16,5 +16,6 @@ a = 5
 root_folder = '/home/yss/sda1/yzl/Data/npm_raw'
 file_name = 'Lille1_1.ply'
 pc = open3d.io.read_point_cloud(os.path.join(root_folder, file_name))
+open3d.geometry.KDTreeSearchParamHybrid
 
 print('done')
