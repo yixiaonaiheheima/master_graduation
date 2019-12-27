@@ -11,10 +11,10 @@ class PointNet2Seg(nn.Module):
             additional_channel = 3
         else:
             additional_channel = 0
-        self.sa1 = PointNetSetAbstraction(1024, 0.1, 32, 6 + additional_channel, [32, 32, 64], False)
-        self.sa2 = PointNetSetAbstraction(256, 0.2, 32, 64 + 3, [64, 64, 128], False)
-        self.sa3 = PointNetSetAbstraction(64, 0.4, 32, 128 + 3, [128, 128, 256], False)
-        self.sa4 = PointNetSetAbstraction(16, 0.8, 32, 256 + 3, [256, 256, 512], False)
+        self.sa1 = PointNetSetAbstraction(1024, 0.5, 32, 3 + additional_channel, [32, 32, 64], False)
+        self.sa2 = PointNetSetAbstraction(256, 1.0, 32, 64 + 3, [64, 64, 128], False)
+        self.sa3 = PointNetSetAbstraction(64, 2.0, 32, 128 + 3, [128, 128, 256], False)
+        self.sa4 = PointNetSetAbstraction(16, 4.0, 32, 256 + 3, [256, 256, 512], False)
         self.fp4 = PointNetFeaturePropagation(768, [256, 256])
         self.fp3 = PointNetFeaturePropagation(384, [256, 256])
         self.fp2 = PointNetFeaturePropagation(320, [256, 128])
@@ -33,10 +33,10 @@ class PointNet2Seg(nn.Module):
          l4_points: tensor(b, 512, 16)
         """
         if self.with_rgb:
-            l0_points = xyz  # (b, 3, N)
+            l0_points = xyz[:, 3:, :]  # (b, 3, N)
             l0_xyz = xyz[:, :3, :]  # (b, 3, N)
         else:
-            l0_points = xyz
+            l0_points = None
             l0_xyz = xyz
         l1_xyz, l1_points = self.sa1(l0_xyz, l0_points)  # (b, 3, 1024), (b, 64, 1024)
         l2_xyz, l2_points = self.sa2(l1_xyz, l1_points)  # (b, 3, 256), (b, 128, 256)

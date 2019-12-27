@@ -41,9 +41,9 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('--gpu_id', type=int, default=1,
                     help='gpu id for network, -1 will use cpu')
-parser.add_argument('--batch_size_train', type=int, default=32,
+parser.add_argument('--batch_size_train', type=int, default=16,
                     help='Batch Size during training [default: 32]')
-parser.add_argument('--batch_size_val', type=int, default=32,
+parser.add_argument('--batch_size_val', type=int, default=16,
                     help='Batch Size during training [default: 32]')
 parser.add_argument('--max_epoch', type=int, default=500,
                     help='Epoch to run [default: 100]')
@@ -67,13 +67,13 @@ parser.add_argument("--seg", type=float, default=1.0,
 parser.add_argument("--cha", type=float, default=1.0,
                     help="Smooth term for translation, default=-7")
 parser.add_argument('--log', help='Log to FILE in save folder; use - for stdout (default is log.txt)', metavar='FILE', default='log.txt')
-parser.add_argument('--sample_num', help='downsample number before feed to net', type=int, default=4096)
+# parser.add_argument('--sample_num', help='downsample number before feed to net', type=int, default=8192)
 parser.add_argument('--step_val', help='downsample number before feed to net', type=int, default=500)
 parser.add_argument('--no_timestamp_folder', help='Dont save to timestamp folder', action='store_true')
 parser.add_argument('--model', '-m', help='Model to use', required=True)
 parser.add_argument('--use_normals', action='store_true')
 parser.add_argument("--train_set", default="train", help="train, train_full")
-# parser.add_argument("--config_file", default="semantic_no_color.json", help="config file path")
+parser.add_argument("--config_file", default="semantic.json", help="config file path")
 parser.add_argument("--dataset_name", default="npm", help="npm, semantic")
 args = parser.parse_args()
 
@@ -81,7 +81,7 @@ GPU_ID = args.gpu_id
 NUM_EPOCH = args.max_epoch
 BATCH_SIZE_TRAIN = args.batch_size_train
 BATCH_SIZE_VAL = args.batch_size_val
-SAMPLE_NUM = args.sample_num
+# SAMPLE_NUM = args.sample_num
 STEP_VAL = args.step_val
 TRAIN_AUGMENTATION = get_augmentations_from_list(args.augmentation, upright_axis=args.upright_axis)
 RESUME_MODEL = args.resume_model
@@ -94,46 +94,6 @@ MODEL_NAME = args.model
 LOG = args.log
 USE_NORMALS = args.use_normals
 DATASET_NAME = args.dataset_name
-if DATASET_NAME == "npm":
-    PARAMS = json.loads(open("npm.json").read())
-    # Import dataset
-    TRAIN_DATASET = NpmDataset(
-        num_points_per_sample=PARAMS["num_point"],
-        split=args.train_set,
-        box_size_x=PARAMS["box_size_x"],
-        box_size_y=PARAMS["box_size_y"],
-        path=PARAMS["data_path"],
-    )
-    VALIDATION_DATASET = NpmDataset(
-        num_points_per_sample=PARAMS["num_point"],
-        split="validation",
-        box_size_x=PARAMS["box_size_x"],
-        box_size_y=PARAMS["box_size_y"],
-        path=PARAMS["data_path"],
-    )
-elif DATASET_NAME == "semantic":
-    PARAMS = json.loads(open("semantic_no_color.json").read())
-    # Import dataset
-    TRAIN_DATASET = SemanticDataset(
-        num_points_per_sample=PARAMS["num_point"],
-        split=args.train_set,
-        box_size_x=PARAMS["box_size_x"],
-        box_size_y=PARAMS["box_size_y"],
-        use_color=PARAMS["use_color"],
-        path=PARAMS["data_path"],
-    )
-    VALIDATION_DATASET = SemanticDataset(
-        num_points_per_sample=PARAMS["num_point"],
-        split="validation",
-        box_size_x=PARAMS["box_size_x"],
-        box_size_y=PARAMS["box_size_y"],
-        use_color=PARAMS["use_color"],
-        path=PARAMS["data_path"],
-    )
-else:
-    raise ValueError
-
-num_classes = TRAIN_DATASET.num_classes
 
 train_augmentations = get_augmentations_from_list(TRAIN_AUGMENTATION)
 os.environ["CUDA_VISIBLE_DEVICES"] = str(GPU_ID)
@@ -162,12 +122,78 @@ print('PID:', os.getpid())
 
 print(args)
 
+if DATASET_NAME == "npm":
+    PARAMS = json.loads(open("npm.json").read())
+    # Import dataset
+    TRAIN_DATASET = NpmDataset(
+        num_points_per_sample=PARAMS["num_point"],
+        split=args.train_set,
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        path=PARAMS["data_path"],
+    )
+    VALIDATION_DATASET = NpmDataset(
+        num_points_per_sample=PARAMS["num_point"],
+        split="validation",
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        path=PARAMS["data_path"],
+    )
+elif DATASET_NAME == "semantic":
+    PARAMS = json.loads(open(args.config_file).read())
+    # Import dataset
+    TRAIN_DATASET = SemanticDataset(
+        num_points_per_sample=PARAMS["num_point"],
+        split=args.train_set,
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_color=PARAMS["use_color"],
+        path=PARAMS["data_path"],
+    )
+    VALIDATION_DATASET = SemanticDataset(
+        num_points_per_sample=PARAMS["num_point"],
+        split="validation",
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_color=PARAMS["use_color"],
+        path=PARAMS["data_path"],
+    )
+else:
+    raise ValueError
+
+num_classes = TRAIN_DATASET.num_classes
+
+
+def update_progress(progress):
+    """
+    Displays or updates a console progress bar
+    Args:
+        progress: A float between 0 and 1. Any int will be converted to a float.
+                  A value under 0 represents a 'halt'.
+                  A value at 1 or bigger represents 100%
+    """
+    barLength = 10  # Modify this to change the length of the progress bar
+    if isinstance(progress, int):
+        progress = round(float(progress), 2)
+    if not isinstance(progress, float):
+        progress = 0
+    if progress < 0:
+        progress = 0
+    if progress >= 1:
+        progress = 1
+    block = int(round(barLength * progress))
+    text = "\rProgress: [{}] {}%".format(
+        "#" * block + "-" * (barLength - block), progress * 100
+    )
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
 
 def get_batch(split):
     np.random.seed()
     if split == "train":
         return TRAIN_DATASET.sample_batch_in_all_files(
-            BATCH_SIZE_TRAIN, augment=False
+            BATCH_SIZE_TRAIN, augment=True
         )
     else:
         return VALIDATION_DATASET.sample_batch_in_all_files(
@@ -272,7 +298,10 @@ def train():
         model = PointNetDenseCls(num_classes)
         criterion = PointnetCriterion()
     elif MODEL_NAME == 'pointnet2':
-        model = PointNet2Seg(num_classes)
+        if PARAMS['use_color']:
+            model = PointNet2Seg(num_classes, with_rgb=True)
+        else:
+            model = PointNet2Seg(num_classes)
         criterion = PointnetCriterion()
     elif MODEL_NAME == 'pointcnn':
         model = PointCNN_seg(num_classes)
@@ -316,6 +345,8 @@ def train():
     num_val = VALIDATION_DATASET.get_num_batches(BATCH_SIZE_VAL)
     stacker, stack_validation, stack_train = init_stacking()
     for batch_idx_train in range(start_iter, batch_num):
+        # progress = float(batch_idx_train) / float(batch_num)
+        # update_progress(round(progress, 2))
         # validation
         if (batch_idx_train % STEP_VAL == 0 and (batch_idx_train != 0 or RESUME_MODEL is not None)) \
                 or batch_idx_train == batch_num - 1:
@@ -350,7 +381,7 @@ def train():
         # run model and then optimize
         scheduler.optimizer.zero_grad()
         model = model.train()
-        points_prob = run_model(model, points_tensor.permute(0, 2, 1))  # (B, sample_num, num_classes), (B, sample_num, 3)
+        points_prob = run_model(model, points_tensor)  # (B, sample_num, num_classes), (B, sample_num, 3)
         _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
         batch_loss = criterion(points_prob, batch_label_tensor)
         batch_loss.backward()
@@ -362,6 +393,7 @@ def train():
         new_class_labels = batch_label.flatten()
         new_class_pred = points_pred.flatten()
         CM.count_predicted(new_class_labels, new_class_pred)
+    # update_progress(1)
 
 
 def val_one_epoch(model, dataset_relevant, val_writer, device, batch_idx_train, criterion):
@@ -370,7 +402,11 @@ def val_one_epoch(model, dataset_relevant, val_writer, device, batch_idx_train, 
     CM = ConfusionMatrix(val_classes)
     batch_loss_count = 0
     batch_num_count = 0
-    for batch_val_idx in range(batch_num_val // 10):
+    update_progress(0)
+    real_batch_num_val = batch_num_val // 10
+    for batch_val_idx in range(real_batch_num_val):
+        progress = float(batch_val_idx) / float(real_batch_num_val)
+        update_progress(round(progress, 2))
         batch_data, batch_label, batch_weights = stack_validation.get()
         # normalize data
         # batch_data = basics_util.normalize_data(batch_data)  # (B, sample_num, 3)
@@ -380,7 +416,7 @@ def val_one_epoch(model, dataset_relevant, val_writer, device, batch_idx_train, 
 
         model = model.eval()
         with torch.no_grad():
-            points_prob = run_model(model, batch_data_tensor.permute(0, 2, 1))  # (B, sample_num, num_classes)
+            points_prob = run_model(model, batch_data_tensor)  # (B, sample_num, num_classes)
             batch_loss = criterion(points_prob, batch_label_tensor)
         # print("batch_val_idx, loss", batch_val_idx, batch_loss)
         batch_loss_count += batch_loss.cpu().numpy()
@@ -390,6 +426,7 @@ def val_one_epoch(model, dataset_relevant, val_writer, device, batch_idx_train, 
         new_class_labels = batch_label.flatten()
         new_class_pred = points_pred.flatten()
         CM.count_predicted(new_class_labels, new_class_pred)
+    update_progress(1)
     mIOU = CM.get_average_intersection_union()
     OA = CM.get_overall_accuracy()
     ave_loss = batch_loss_count / batch_num_count
@@ -402,13 +439,26 @@ def val_one_epoch(model, dataset_relevant, val_writer, device, batch_idx_train, 
 
 
 def run_model(model, P):
+    """
+
+    :param model:
+    :param P: tensor(B, N, C)
+    :return:
+    """
+    points = P[:, :, :3]
+    if PARAMS['use_color']:
+        features = P[:, :, 3:]
+    else:
+        features = points
     if MODEL_NAME == 'pointnet':
-        res, _, _ = model(P)
+        res, _, _ = model(points.permute(0, 2, 1))
     elif MODEL_NAME == 'pointnet2':
-        res, _ = model(P)
+        if PARAMS['use_color']:
+            res, _ = model(P.permute(0, 2, 1))
+        else:
+            res, _ = model(points.permute(0, 2, 1))
     elif MODEL_NAME == 'pointcnn':
-        P_permute = P.permute(0, 2, 1)
-        res = model(P_permute, P_permute)
+        res = model(points, features)
     else:
         raise ValueError
     return res
