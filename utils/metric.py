@@ -87,7 +87,7 @@ class ConfusionMatrix:
         print("Confusion matrix:")
 
         # Fill default labels: ["0", "1", "2", ...]
-        if labels == None:
+        if labels is None:
             labels = [str(val) for val in range(self.num_classes)]
         elif len(labels) != self.num_classes:
             raise ValueError("len(labels) != self.num_classes")
