@@ -198,7 +198,7 @@ class PointNetDenseCls(nn.Module):
         self.with_rgb = with_rgb
         self.k = k
         self.feature_transform = feature_transform
-        self.feat = PointNetfeat(global_feat=False, feature_transform=feature_transform)
+        self.feat = PointNetfeat(global_feat=False, feature_transform=feature_transform, input_transform=False)
         self.conv1 = torch.nn.Conv1d(1088, 512, 1)
         self.conv2 = torch.nn.Conv1d(512, 256, 1)
         self.conv3 = torch.nn.Conv1d(256, 128, 1)
@@ -218,6 +218,7 @@ class PointNetDenseCls(nn.Module):
         """
         batchsize = x.size()[0]
         n_pts = x.size()[2]
+        x = x[:, :3, :]  # (b, 3, n)
         x = self.feat(x)
         x = F.relu(self.bn1(self.conv1(x)))  # (b, 512, n)
         x = F.relu(self.bn2(self.conv2(x)))  # (b, 256, n)
