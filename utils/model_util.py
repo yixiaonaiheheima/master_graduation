@@ -32,24 +32,18 @@ def run_model(model, input_tensor, params, model_name):
     :return:
     """
     points = input_tensor[:, :, :3]
-    if params['use_color']:
+    if params['use_color'] or params['use_geometry']:
         features = input_tensor[:, :, 3:]
     else:
         features = points
     if model_name == 'pointnet':
         res = model(points.permute(0, 2, 1))
     elif model_name == 'pointnet2':
-        if params['use_color']:
-            res, _ = model(input_tensor.permute(0, 2, 1))
-        else:
-            res, _ = model(points.permute(0, 2, 1))
+        res = model(input_tensor.permute(0, 2, 1))
     elif model_name == 'pointcnn':
         res = model(points, features)
     elif model_name == 'pointsemantic':
-        if params['use_color']:
-            res = model(input_tensor)
-        else:
-            res = model(points)
+        res = model(input_tensor)
     else:
         raise ValueError
     return res
@@ -69,7 +63,11 @@ def select_model(model_name, num_classes, params):
         model = PointCNN_seg(num_classes)
         criterion = PointnetCriterion()
     elif model_name == 'pointsemantic':
-        model = PointSemantic(num_classes, with_rgb=params['use_color'])
+        if params['use_geometry']:
+            addition_channel = 7
+        else:
+            addition_channel = 0
+        model = PointSemantic(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)
         criterion = PointnetCriterion()
     else:
         raise ValueError

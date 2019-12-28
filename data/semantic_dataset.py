@@ -4,6 +4,7 @@ import numpy as np
 import sys
 import utils.provider as provider
 from utils.point_cloud_util import load_labels
+import h5py
 
 train_file_prefixes = [
     "bildstein_station1_xyz_intensity_rgb",
@@ -57,7 +58,7 @@ map_name_to_file_prefixes = {
 
 class SemanticFileData:
     def __init__(
-        self, file_path_without_ext, has_label, use_color, box_size_x, box_size_y
+        self, file_path_without_ext, has_label, use_color, use_geometry, box_size_x, box_size_y
     ):
         """
         Loads file data
@@ -82,11 +83,21 @@ class SemanticFileData:
         else:
             self.colors = np.zeros_like(self.points)
 
+        # load geometry features. If not use_geometr, fill with zeros
+        if use_geometry:
+            h5_path = file_path_without_ext + '.h5'
+            assert(os.path.exists(h5_path))
+            h5_file = h5py.File(h5_path, 'r')
+            self.geometry = h5_file['geometry_features'][...]
+        else:
+            self.geometry = np.zeros((self.points.shape[0], 7), dtype=np.float32)
+
         # Sort according to x to speed up computation of boxes and z-boxes
         sort_idx = np.argsort(self.points[:, 0])
         self.points = self.points[sort_idx]
         self.labels = self.labels[sort_idx]
         self.colors = self.colors[sort_idx]
+        self.geometry = self.geometry[sort_idx]
 
     def _get_fix_sized_sample_mask(self, points, num_points_per_sample):
         """
@@ -174,17 +185,19 @@ class SemanticFileData:
         points = points[scene_extract_mask]
         labels = self.labels[scene_extract_mask]
         colors = self.colors[scene_extract_mask]
+        geometry = self.geometry[scene_extract_mask]
 
         sample_mask = self._get_fix_sized_sample_mask(points, num_points_per_sample)
         points = points[sample_mask]
         labels = labels[sample_mask]
         colors = colors[sample_mask]
+        geometry = geometry[sample_mask]
 
         # Shift the points, such that min(z) == 0, and x = 0 and y = 0 is the center
         # This canonical column is used for both training and inference
         points_centered = self._center_box(points)
 
-        return points_centered, points, labels, colors
+        return points_centered, points, labels, colors, geometry
 
     def sample_batch(self, batch_size, num_points_per_sample):
         """
@@ -194,33 +207,35 @@ class SemanticFileData:
         batch_points_raw = []
         batch_labels = []
         batch_colors = []
+        batch_geometry = []
 
         for _ in range(batch_size):
-            points_centered, points_raw, gt_labels, colors = self.sample(
-                num_points_per_sample
-            )
+            points_centered, points_raw, gt_labels, colors, geometry = self.sample(num_points_per_sample)
             batch_points_centered.append(points_centered)
             batch_points_raw.append(points_raw)
             batch_labels.append(gt_labels)
             batch_colors.append(colors)
+            batch_geometry.append(geometry)
 
         return (
             np.array(batch_points_centered),
             np.array(batch_points_raw),
             np.array(batch_labels),
             np.array(batch_colors),
+            np.array(batch_geometry)
         )
 
 
 class SemanticDataset:
     def __init__(
-        self, num_points_per_sample, split, use_color, box_size_x, box_size_y, path
+        self, num_points_per_sample, split, use_color, use_geometry, box_size_x, box_size_y, path
     ):
         """Create a dataset holder
         num_points_per_sample (int): Defaults to 8192. The number of point per sample
         split (str): Defaults to 'train'. The selected part of the data (train, test,
                      reduced...)
-        color (bool): Defaults to True. Whether to use colors or not
+        use_color (bool): Defaults to True. Whether to use colors or not
+        use_geometry (bool): Defaults to True. Whether to use geometry features or not
         box_size_x (int): Defaults to 10. The size of the extracted cube.
         box_size_y (int): Defaults to 10. The size of the extracted cube.
         path (float): Defaults to 'dataset/semantic_data/'.
@@ -229,6 +244,7 @@ class SemanticDataset:
         self.num_points_per_sample = num_points_per_sample
         self.split = split
         self.use_color = use_color
+        self.use_geometry = use_geometry
         self.box_size_x = box_size_x
         self.box_size_y = box_size_y
         self.num_classes = 9
@@ -258,6 +274,7 @@ class SemanticDataset:
                 file_path_without_ext=file_path_without_ext,
                 has_label=self.split != "test",
                 use_color=self.use_color,
+                use_geometry=self.use_geometry,
                 box_size_x=self.box_size_x,
                 box_size_y=self.box_size_y,
             )
@@ -272,9 +289,9 @@ class SemanticDataset:
         # Pre-compute the points weights if it is a training set
         if self.split == "train" or self.split == "train_full":
             # First, compute the histogram of each labels
-            label_weights = np.zeros(9)
+            label_weights = np.zeros(self.num_classes)
             for labels in [fd.labels for fd in self.list_file_data]:
-                tmp, _ = np.histogram(labels, range(10))
+                tmp, _ = np.histogram(labels, range(self.num_classes + 1))
                 label_weights += tmp
 
             # Then, a heuristic gives the weights
@@ -283,7 +300,7 @@ class SemanticDataset:
             label_weights = label_weights / np.sum(label_weights)
             self.label_weights = 1 / np.log(1.2 + label_weights)
         else:
-            self.label_weights = np.zeros(9)
+            self.label_weights = np.zeros(self.num_classes)
         print("label weights are:")
         print(self.label_weights)
 
@@ -293,23 +310,24 @@ class SemanticDataset:
         batch_weights = []
 
         for _ in range(batch_size):
-            points, labels, colors, weights = self.sample_in_all_files(is_training=True)
+            points, labels, colors, geometry, weights = self.sample_in_all_files(is_training=True)
+            data_list = [points]
             if self.use_color:
-                batch_data.append(np.hstack((points, colors)))
-            else:
-                batch_data.append(points)
+                data_list.append(colors)
+            if self.use_geometry:
+                data_list.append(geometry)
+            batch_data.append(np.hstack(data_list))
             batch_label.append(labels)
             batch_weights.append(weights)
 
-        batch_data = np.array(batch_data)
-        batch_label = np.array(batch_label)
-        batch_weights = np.array(batch_weights)
+        batch_data = np.array(batch_data)  # (B, N, C), C = 3[+3][+7]
+        batch_label = np.array(batch_label)  # (B, N)
+        batch_weights = np.array(batch_weights)  # (B, N)
 
         if augment:
-            if self.use_color:
-                batch_data = provider.rotate_feature_point_cloud(batch_data, 3)
-            else:
-                batch_data = provider.rotate_point_cloud(batch_data)
+            batch_data[:, :, :3] = provider.jitter_point_cloud(batch_data[:, :, :3])
+            batch_data[:, :, :3] = provider.shift_point_cloud(batch_data[:, :, :3])
+            batch_data[:, :, :3] = provider.random_scale_point_cloud(batch_data[:, :, :3])
 
         return batch_data, batch_label, batch_weights
 
@@ -323,15 +341,14 @@ class SemanticDataset:
         )
 
         # Sample from the selected scene
-        points_centered, points_raw, labels, colors = self.list_file_data[
-            scene_index
-        ].sample(num_points_per_sample=self.num_points_per_sample)
+        points_centered, points_raw, labels, colors, geometry = self.list_file_data[
+            scene_index].sample(num_points_per_sample=self.num_points_per_sample)
 
         if is_training:
             weights = self.label_weights[labels]
-            return points_centered, labels, colors, weights
+            return points_centered, labels, colors, geometry, weights
         else:
-            return scene_index, points_centered, points_raw, labels, colors
+            return scene_index, points_centered, points_raw, labels, colors, geometry
 
     def get_total_num_points(self):
         list_num_points = [len(fd.points) for fd in self.list_file_data]

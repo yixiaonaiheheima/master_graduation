@@ -6,6 +6,7 @@ import open3d
 import time
 import torch
 from data.semantic_dataset import SemanticDataset
+from data.npm_dataset import NpmDataset
 from utils.metric import ConfusionMatrix
 from utils.model_util import select_model, run_model
 
@@ -22,6 +23,7 @@ parser.add_argument('--num_point', help='downsample number before feed to net', 
 parser.add_argument('--model_name', '-m', help='Model to use', required=True)
 parser.add_argument('--batch_size', type=int, default=16,
                     help='Batch Size for prediction [default: 32]')
+parser.add_argument('--dataset', default='semantic', help='dataset to predict')
 flags = parser.parse_args()
 
 
@@ -34,14 +36,25 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     # Dataset
-    dataset = SemanticDataset(
-        num_points_per_sample=flags.num_point,
-        split=flags.set,
-        box_size_x=hyper_params["box_size_x"],
-        box_size_y=hyper_params["box_size_y"],
-        use_color=hyper_params["use_color"],
-        path=hyper_params["data_path"],
-    )
+    if flags.dataset == 'semantic':
+        dataset = SemanticDataset(
+            num_points_per_sample=flags.num_point,
+            split=flags.set,
+            box_size_x=hyper_params["box_size_x"],
+            box_size_y=hyper_params["box_size_y"],
+            use_color=hyper_params["use_color"],
+            use_geometry=hyper_params['use_geometry'],
+            path=hyper_params["data_path"],
+        )
+    elif flags.dataset == 'npm':
+        dataset = NpmDataset(
+            num_points_per_sample=flags.num_point,
+            split=flags.set,
+            box_size_x=hyper_params["box_size_x"],
+            box_size_y=hyper_params["box_size_y"],
+            use_geometry=hyper_params['use_geometry'],
+            path=hyper_params["data_path"],
+        )
 
     # Model
     if torch.cuda.is_available():
@@ -77,22 +90,21 @@ if __name__ == "__main__":
             )
 
             # Get data
-            points_centered, points, gt_labels, colors = semantic_file_data.sample_batch(
+            points_centered, points, gt_labels, colors, geometry = semantic_file_data.sample_batch(
                 batch_size=current_batch_size,
                 num_points_per_sample=flags.num_point,
             )
 
-            # (bs, 8192, 3) concat (bs, 8192, 3) -> (bs, 8192, 6)
-            if hyper_params["use_color"]:
-                points_centered_with_colors = np.concatenate(
-                    (points_centered, colors), axis=-1
-                )
-            else:
-                points_centered_with_colors = points_centered
+            data_list = [points_centered]
+            if hyper_params['use_color']:
+                data_list.append(colors)
+            if hyper_params['use_geometry']:
+                data_list.append(geometry)
+            point_cloud = np.concatenate(data_list, axis=-1)
 
             # Predict
             s = time.time()
-            input_tensor = torch.from_numpy(points_centered_with_colors).to(device, dtype=torch.float32)  # (current_batch_size, N, 3)
+            input_tensor = torch.from_numpy(point_cloud).to(device, dtype=torch.float32)  # (current_batch_size, N, 3)
             with torch.no_grad():
                 pd_prob = run_model(model, input_tensor, hyper_params, flags.model_name)  # (current_batch_size, N)
             _, pd_labels = torch.max(pd_prob, dim=2)  # (B, N)

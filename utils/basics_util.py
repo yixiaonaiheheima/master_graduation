@@ -6,6 +6,7 @@ import math
 import transforms3d.quaternions as txq
 import random
 import time
+from sklearn.neighbors import KDTree
 
 
 def timeit(tag, t):
@@ -347,7 +348,7 @@ def get_indices(batch_size, sample_num, point_num, filter_label=None, labels=Non
     return np.stack(indices)  # (B, sample_num)
 
 
-def get_cov(points):
+def get_cov_torch(points):
     """
     get covariance from points
     :param points: tensor (B, N, num_neighbors,3)
@@ -369,7 +370,7 @@ def compute_normals(cloud):
     dist = square_distance(cloud, cloud)  # (B, N, N)
     _, neighbor_indices = torch.topk(dist, 30, dim=2, largest=False, sorted=False)  # (B, N, 30)
     neighborhood = index_points(cloud, neighbor_indices)  # (B, N, 30, 3)
-    cov = get_cov(neighborhood)  # (B, N, 3, 3)
+    cov = get_cov_torch(neighborhood)  # (B, N, 3, 3)
     eigen_values, eigen_vectors = torch.symeig(cov, eigenvectors=True)  # (B, N, 3), (B, N, 3, 3)
     eigen_values = eigen_values.to(cloud.device)
     # we only use the real part and ignore imaginary part
@@ -379,3 +380,43 @@ def compute_normals(cloud):
     normals = eigen_vectors[batch_indices, point_indices, :, mini_eigen_indices]  # (B, N, 3)
 
     return normals
+
+
+def get_cov(points):
+    points -= np.mean(points, axis=0)  # (n, 3)
+    return points.transpose().dot(points) / points.shape[0]
+
+
+def compute_geometry_feature(cloud):
+    """
+
+    :param cloud: ndarray (N, 3)
+    :return: geometry_feature (N, 7), normal(N, 3)
+    """
+    cloud = cloud[:, :3]
+    N = cloud.shape[0]
+    tree = KDTree(cloud)
+    neighborhoods_radius = tree.query_radius(cloud, r=0.75)
+    k = min(N, 20)
+    _, neighborhoods_fixed = tree.query(cloud, k=k)
+    neighborhoods = [neighborhoods_radius[idx] if len(neighborhoods_radius[idx]) >= len(neighborhoods_fixed[idx])
+                     else neighborhoods_fixed[idx] for idx in range(N)]
+    cov = np.array([get_cov(cloud[neighborhood]) for neighborhood in neighborhoods])  # (N, 3, 3)
+    eigen_values, eigen_vectors = np.linalg.eigh(cov)  # (N, 3), (N, 3, 3)
+    # eigen values is automatically in ascending order i.e. lambda3 <= lambda2 <= lambda1
+    lambda3 = eigen_values[:, 0]  # (N,)
+    lambda2 = eigen_values[:, 1]  # (N,)
+    lambda1 = eigen_values[:, 2]  # (N,)
+    lambda_sum = lambda1 + lambda2 + lambda3
+    lambda_product = lambda1 * lambda2 * lambda3
+    curvature_change = lambda3 / lambda_sum  # (N,)
+    omni_variace = lambda_product ** (1 / 3) / lambda_sum  # (N,)
+    linearity = (lambda1 - lambda2) / lambda1
+    eigenvalue_entropy = - (lambda1 * np.log(lambda1) + lambda2 * np.log(lambda2) + lambda3 * np.log(lambda3))
+    normals = eigen_vectors[:, :, 0]  # (N, 3)
+    normals_vertical_component = normals[:, -1]  # (N,)
+    height_difference = np.array(
+        [np.max(cloud[neighborhood, 2]) - np.min(cloud[neighborhood, 2]) for neighborhood in neighborhoods])  # (N,)
+    height_variance = np.array([get_cov(cloud[neighborhood, 2]) for neighborhood in neighborhoods])  # (N,)
+    return np.stack([curvature_change, omni_variace, linearity, eigenvalue_entropy, normals_vertical_component,
+                     height_difference, height_variance], axis=1), normals

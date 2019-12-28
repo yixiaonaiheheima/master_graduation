@@ -27,7 +27,7 @@ class PointNet2Seg(nn.Module):
     def forward(self, xyz):
         """
 
-        :param xyz: tensor(b, 3, N)
+        :param xyz: tensor(b, 3+C, N)
         :return:
          x: tensor(b, N, num_classes)
          l4_points: tensor(b, 512, 16)
@@ -52,7 +52,7 @@ class PointNet2Seg(nn.Module):
         x = self.conv2(x)  # (b, num_classes, N)
         x = F.log_softmax(x, dim=1)  # (b, num_classes, N)
         x = x.permute(0, 2, 1)  # (b, N, num_classes)
-        return x, l4_points  # (b, N, num_classes), (b, 512, 16)
+        return x  # (b, N, num_classes)
 
 
 class get_loss(nn.Module):

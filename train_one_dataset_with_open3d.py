@@ -99,6 +99,7 @@ if DATASET_NAME == "npm":
         split=args.train_set,
         box_size_x=PARAMS["box_size_x"],
         box_size_y=PARAMS["box_size_y"],
+        use_geometry=PARAMS["use_geometry"],
         path=PARAMS["data_path"],
     )
     VALIDATION_DATASET = NpmDataset(
@@ -106,6 +107,7 @@ if DATASET_NAME == "npm":
         split="validation",
         box_size_x=PARAMS["box_size_x"],
         box_size_y=PARAMS["box_size_y"],
+        use_geometry=PARAMS["use_geometry"],
         path=PARAMS["data_path"],
     )
 elif DATASET_NAME == "semantic":
@@ -117,6 +119,7 @@ elif DATASET_NAME == "semantic":
         box_size_x=PARAMS["box_size_x"],
         box_size_y=PARAMS["box_size_y"],
         use_color=PARAMS["use_color"],
+        use_geometry=PARAMS["use_geometry"],
         path=PARAMS["data_path"],
     )
     VALIDATION_DATASET = SemanticDataset(
@@ -125,6 +128,7 @@ elif DATASET_NAME == "semantic":
         box_size_x=PARAMS["box_size_x"],
         box_size_y=PARAMS["box_size_y"],
         use_color=PARAMS["use_color"],
+        use_geometry=PARAMS["use_geometry"],
         path=PARAMS["data_path"],
     )
 else:
@@ -404,10 +408,10 @@ def train():
 
         # Train one epoch
         train_one_epoch(stack_train, scheduler, model, criterion, device, train_writer)
-        save_path = os.path.join(root_folder, 'checkpoint_epoch{}.tar'.format(epoch))
         # Evaluate, save, and compute the accuracy
         if epoch % 5 == 0:
             acc = eval_one_epoch(stack_validation, model, criterion, device, val_writer)
+            save_path = os.path.join(root_folder, 'checkpoint_epoch{}_acc{}.tar'.format(epoch, acc))
             if acc > best_acc:
                 best_acc = acc
                 torch.save({
@@ -415,18 +419,18 @@ def train():
                     'state_dict': model.state_dict(),
                     'scheduler': scheduler.state_dict(),
                 }, save_path)
-                log_string("Model saved in file: %s_%facc" % (save_path, acc))
+                log_string("Model saved in file: %s" % save_path)
                 print("Model saved in file: %s" % save_path)
 
-        # Save the variables to disk.
-        if epoch % 10 == 0:
-            torch.save({
-                'epoch': epoch + 1,
-                'state_dict': model.state_dict(),
-                'scheduler': scheduler.state_dict(),
-            }, save_path)
-            log_string("Model saved in file: %s" % save_path)
-            print("Model saved in file: %s" % save_path)
+            # Save the variables to disk.
+            if epoch % 10 == 0:
+                torch.save({
+                    'epoch': epoch + 1,
+                    'state_dict': model.state_dict(),
+                    'scheduler': scheduler.state_dict(),
+                }, save_path)
+                log_string("Model saved in file: %s" % save_path)
+                print("Model saved in file: %s" % save_path)
 
     # Kill the process, close the file and exit
     stacker.terminate()
