@@ -27,8 +27,8 @@ cudnn.enabled = True
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--gpu_id', type=int, default=1, help='gpu id for network')
-parser.add_argument('--batch_size_train', type=int, default=16,
+parser.add_argument('--gpu_id', type=int, default=0, help='gpu id for network')
+parser.add_argument('--batch_size_train', type=int, default=6,
                     help='Batch Size during training [default: 32]')
 parser.add_argument('--batch_size_val', type=int, default=16,
                     help='Batch Size during training [default: 32]')
@@ -59,11 +59,10 @@ parser.add_argument('--log', help='Log to FILE in save folder; use - for stdout 
                     default='log.txt')
 parser.add_argument('--num_point', help='downsample number before feed to net', type=int, default=8192)
 parser.add_argument('--step_val', help='downsample number before feed to net', type=int, default=200000)
-parser.add_argument('--model_name', '-m', help='Model to use', required=True)
+parser.add_argument('--model_name', '-m', default='pointsemantic_cross', help='Model to use')
 parser.add_argument('--use_normals', action='store_true')
 parser.add_argument("--train_set", default="train", help="train, train_full")
-parser.add_argument("--config_file", default="semantic.json", help="config file path")
-parser.add_argument("--dataset_name", default="semantic", help="npm, semantic")
+parser.add_argument("--dataset_name", default="semantic_plus_npm", help="npm, semantic")
 args = parser.parse_args()
 
 GPU_ID = args.gpu_id
@@ -86,56 +85,43 @@ DATASET_NAME = args.dataset_name
 
 train_augmentations = get_augmentations_from_list(TRAIN_AUGMENTATION)
 
-SAVE_FOLDER = 'train_log/' + MODEL_NAME + '_' + DATASET_NAME
+SAVE_FOLDER = 'train_log/' + MODEL_NAME + DATASET_NAME
 root_folder = SAVE_FOLDER
 if not os.path.exists(root_folder):
     os.makedirs(root_folder)
 
-if DATASET_NAME == "npm":
-    PARAMS = json.loads(open("npm.json").read())
-    # Import dataset
-    TRAIN_DATASET = NpmDataset(
-        num_points_per_sample=NUM_POINT,
-        split=args.train_set,
-        box_size_x=PARAMS["box_size_x"],
-        box_size_y=PARAMS["box_size_y"],
-        use_geometry=PARAMS["use_geometry"],
-        path=PARAMS["data_path"],
-    )
-    VALIDATION_DATASET = NpmDataset(
-        num_points_per_sample=NUM_POINT,
-        split="validation",
-        box_size_x=PARAMS["box_size_x"],
-        box_size_y=PARAMS["box_size_y"],
-        use_geometry=PARAMS["use_geometry"],
-        path=PARAMS["data_path"],
-    )
-elif DATASET_NAME == "semantic":
-    PARAMS = json.loads(open(args.config_file).read())
-    # Import dataset
-    TRAIN_DATASET = SemanticDataset(
-        num_points_per_sample=NUM_POINT,
-        split=args.train_set,
-        box_size_x=PARAMS["box_size_x"],
-        box_size_y=PARAMS["box_size_y"],
-        use_color=PARAMS["use_color"],
-        use_geometry=PARAMS["use_geometry"],
-        path=PARAMS["data_path"],
-    )
-    VALIDATION_DATASET = SemanticDataset(
-        num_points_per_sample=NUM_POINT,
-        split="validation",
-        box_size_x=PARAMS["box_size_x"],
-        box_size_y=PARAMS["box_size_y"],
-        use_color=PARAMS["use_color"],
-        use_geometry=PARAMS["use_geometry"],
-        path=PARAMS["data_path"],
-    )
-else:
-    raise ValueError
+PARAMS = json.loads(open("semantic_no_color.json").read())
+# Import dataset
+TRAIN_DATASET = SemanticDataset(
+    num_points_per_sample=NUM_POINT,
+    split=args.train_set,
+    box_size_x=PARAMS["box_size_x"],
+    box_size_y=PARAMS["box_size_y"],
+    use_color=PARAMS["use_color"],
+    use_geometry=PARAMS["use_geometry"],
+    path=PARAMS["data_path"],
+)
+VALIDATION_DATASET = SemanticDataset(
+    num_points_per_sample=NUM_POINT,
+    split="validation",
+    box_size_x=PARAMS["box_size_x"],
+    box_size_y=PARAMS["box_size_y"],
+    use_color=PARAMS["use_color"],
+    use_geometry=PARAMS["use_geometry"],
+    path=PARAMS["data_path"],
+)
+NPM_PARAMS = json.loads(open("npm.json").read())
+NPM_VALIDATION_DATASET = NpmDataset(
+    num_points_per_sample=NUM_POINT,
+    split="validation",
+    box_size_x=NPM_PARAMS["box_size_x"],
+    box_size_y=NPM_PARAMS["box_size_y"],
+    use_geometry=NPM_PARAMS["use_geometry"],
+    path=NPM_PARAMS["data_path"],
+)
 
 num_classes = TRAIN_DATASET.num_classes
-
+label_weights = TRAIN_DATASET.label_weights
 # start logging
 LOG_FOUT = open(os.path.join(root_folder, LOG), 'w')
 EPOCH_CNT = 0
@@ -180,9 +166,9 @@ def update_progress(progress):
 def get_batch(split):
     np.random.seed()
     if split == "train":
-        return TRAIN_DATASET.sample_batch_in_all_files(
-            BATCH_SIZE_TRAIN, augment=True
-        )
+        return TRAIN_DATASET.sample_batch_in_all_files(BATCH_SIZE_TRAIN,
+                                                       augment=True), NPM_VALIDATION_DATASET.sample_batch_in_all_files(
+            BATCH_SIZE_TRAIN, augment=True)
     else:
         return VALIDATION_DATASET.sample_batch_in_all_files(
             BATCH_SIZE_VAL, augment=False
@@ -268,15 +254,16 @@ def train_one_epoch(stack, scheduler, model, criterion, device, train_writer):
         # Refill more batches if empty
         progress = float(batch_idx) / float(num_batches)
         update_progress(round(progress, 2))
-        batch_data, batch_label, batch_weights = stack.get()
+        (batch_data, batch_label, batch_weights), (npm_batch_data, _, _) = stack.get()
 
         # Get predicted labels
         points_tensor = torch.from_numpy(batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
+        npm_points_tensor = torch.from_numpy(npm_batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
         batch_label_tensor = torch.from_numpy(batch_label).to(device, dtype=torch.long)  # (B, sample_num)
         scheduler.optimizer.zero_grad()
         model = model.train()
-        points_prob = run_model(model, points_tensor, PARAMS, MODEL_NAME)  # (B, sample_num, num_classes), (B, sample_num, 3)
-        batch_loss = criterion(points_prob, batch_label_tensor)
+        points_prob, npm_reconstructed = run_model(model, points_tensor, PARAMS, MODEL_NAME, another_input=npm_points_tensor)  # (B, sample_num, num_classes), (B, sample_num, 3)
+        batch_loss = criterion(points_prob, batch_label_tensor, npm_reconstructed, npm_points_tensor)
         _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
         batch_loss.backward()
         scheduler.optimizer.step()
@@ -325,8 +312,9 @@ def eval_one_epoch(stack, model, criterion, device, val_writer):
         batch_label_tensor = torch.from_numpy(batch_label).to(device, dtype=torch.long)  # (B, sample_num)
         model = model.eval()
         with torch.no_grad():
-            points_prob = run_model(model, points_tensor, PARAMS, MODEL_NAME)  # (B, sample_num, num_classes), (B, sample_num, 3)
-            batch_loss = criterion(points_prob, batch_label_tensor)
+            points_prob, reconstructed = run_model(model, points_tensor, PARAMS, MODEL_NAME,
+                                                   another_input=points_tensor)  # (B, sample_num, num_classes), (B, sample_num, 3)
+            batch_loss = criterion(points_prob, batch_label_tensor, reconstructed, points_tensor)
         _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
 
         # Update metrics
@@ -366,7 +354,8 @@ def train():
         device = torch.device("cuda:%d" % GPU_ID)
     else:
         raise ValueError("GPU not found!")
-    model, criterion = select_model(MODEL_NAME, num_classes, PARAMS)
+    label_weights_tensor = torch.from_numpy(label_weights).to(device)
+    model, criterion = select_model(MODEL_NAME, num_classes, PARAMS, weights=label_weights_tensor)
     model = model.to(device)
     criterion = criterion.to(device)
 
@@ -411,7 +400,7 @@ def train():
         # Evaluate, save, and compute the accuracy
         if epoch % 5 == 0:
             acc = eval_one_epoch(stack_validation, model, criterion, device, val_writer)
-            save_path = os.path.join(root_folder, 'checkpoint_epoch{}_acc{}.tar'.format(epoch, acc))
+            save_path = os.path.join(root_folder, 'checkpoint_epoch%d_acc%.2f.tar' % (epoch, acc))
             if acc > best_acc:
                 best_acc = acc
                 torch.save({

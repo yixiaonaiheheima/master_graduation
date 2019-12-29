@@ -300,7 +300,7 @@ class SemanticDataset:
             label_weights = label_weights / np.sum(label_weights)
             self.label_weights = 1 / np.log(1.2 + label_weights)
         else:
-            self.label_weights = np.zeros(self.num_classes)
+            self.label_weights = np.ones(self.num_classes, dtype=np.float32)
         print("label weights are:")
         print(self.label_weights)
 

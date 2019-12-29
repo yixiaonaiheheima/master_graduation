@@ -1,16 +1,18 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import sys
+sys.path.append("../")
 import os
 import numpy as np
 import open3d
 import h5py
 from utils.basics_util import compute_geometry_feature
-from data.semantic_dataset import all_file_prefixes, train_file_prefixes, validation_file_prefixes
+from data.npm_dataset import npm_all_file_prefixes
 
 
-root_folder = "/home/yss/sda1/yzl/open3d_pointnet2/dataset/semantic_downsampled"
-file_list = train_file_prefixes + validation_file_prefixes
+root_folder = "/home/yss/sda1/yzl/Data/npm_downsampled"
+file_list = npm_all_file_prefixes
 for file in file_list:
     pcd_fname = file + '.pcd'
     pcd_path = os.path.join(root_folder, pcd_fname)
@@ -24,6 +26,7 @@ for file in file_list:
         continue
     pcd_file = open3d.io.read_point_cloud(pcd_path)
     cloud = np.asarray(pcd_file.points)
+    print("compute geometry feature for %s" % file)
     geo_feature, normals = compute_geometry_feature(cloud)
 
     h5_file = h5py.File(h5_path, 'w')

@@ -1,21 +1,7 @@
 {
-    "gpu": "0",
-    "logdir": "log/semantic",
     "data_path": "/home/yss/sda1/yzl/Data/npm_downsampled",
-
-    "max_epoch": 500,
-    "num_point": 4096,
+    "use_geometry": 0,
     "use_color": 0,
-
-    "optimizer": "adam",
-    "momentum": 0.9,
-    "learning_rate": 0.001,
-    "decay_step": 200000,
-    "learning_rate_decay_rate": 0.7,
-
-    "box_size_x": 60,
-    "box_size_y": 20,
-    "bn_init_decay": 0.5,
-    "bn_decay_decay_rate": 0.5,
-    "bn_decay_clip": 0.99
+    "box_size_x": 10,
+    "box_size_y": 10
 }

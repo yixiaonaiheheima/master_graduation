@@ -227,3 +227,27 @@ def show_point_cloud(tuple,seg_label=[],title=None):
         ax.set_xlabel('X')
     plt.title(title)
     plt.show()
+
+
+def convert2new(npm_labels, semantic_labels):
+    """
+    convert semantic label and npm label to new class. We set new classes by 0: unlabeled, 1: ground,
+    2: nature, 3: building, 4: hardscape 5: cars
+    :param npm_labels: (N,) npm  labels available by dataset
+    :param semantic_labels: (N,) semantic  labels availabel by model
+    :return: (n,), (n,)
+    """
+    semantic2new = {0: 0, 1: 1, 2: 2, 3: 2, 4: 2, 5: 3, 6: 4, 7: 0, 8: 5}
+    npm2new = {0: 0, 1: 1, 2: 3, 3: 4, 4: 4, 5: 4, 6: 4, 7: 0, 8: 5, 9: 2}
+    npm_shape = npm_labels.shape
+    semantic_shape = semantic_labels.shape
+    assert(npm_shape == semantic_shape)
+    npm_labels = npm_labels.flatten()
+    semantic_labels = semantic_labels.flatten()
+    N = len(npm_labels)
+    for i in range(N):
+        npm_labels[i] = npm2new[npm_labels[i]]
+        semantic_labels[i] = semantic2new[semantic_labels[i]]
+    npm_labels = np.reshape(npm_labels, npm_shape)
+    semantic_labels = np.reshape(semantic_labels, npm_shape)
+    return npm_labels, semantic_labels

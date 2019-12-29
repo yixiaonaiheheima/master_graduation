@@ -1,26 +1,23 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from data.semantic_dataset import SemanticDataset
+from data.npm_dataset import NpmDataset
 import sys
-import argparse
 import os
 import numpy as np
-import random
 import torch
-import torch.nn as nn
 from data.augment import get_augmentations_from_list
-from models.pointnet import PointNetDenseCls
-from models.loss import PointnetCriterion
-from models.pointnet2 import PointNet2Seg
-from pointcnn_utils.pointcnn import PointCNN_seg
 from tensorboardX import SummaryWriter
 from torch.backends import cudnn
+import json
+import datetime
+import multiprocessing as mp
+import argparse
+import time
 from datetime import datetime
-# import importlib
-from utils import data_utils, basics_util
-import math
-from metric import ConfusionMatrix
-from tqdm import tqdm
+from utils import metric
+from utils.model_util import run_model, select_model
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
@@ -30,20 +27,21 @@ cudnn.enabled = True
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--gpu_id', type=int, default=1,
-                    help='gpu id for network, -1 will use cpu')
-parser.add_argument('--batch_size_train', type=int, default=32,
+parser.add_argument('--gpu_id', type=int, default=1, help='gpu id for network')
+parser.add_argument('--batch_size_train', type=int, default=16,
                     help='Batch Size during training [default: 32]')
-parser.add_argument('--batch_size_val', type=int, default=32,
+parser.add_argument('--batch_size_val', type=int, default=16,
                     help='Batch Size during training [default: 32]')
-parser.add_argument('--max_epoch', type=int, default=256,
+parser.add_argument('--max_epoch', type=int, default=500,
                     help='Epoch to run [default: 100]')
 parser.add_argument('--init_learning_rate',
                     type=float, default=0.001, help='Initial learning rate [default: 0.001]')
+parser.add_argument('--lr_decay_step', type=int, default=200000,
+                    help='learning rate step for every decay [default: 200000]')
+parser.add_argument('--lr_decay_rate', type=float, default=0.7,
+                    help='learning rate rate for every decay [default: 0.7]')
 parser.add_argument('--optimizer', default='adam',
                     help='adam or momentum [default: adam]')
-parser.add_argument('--seed', type=int, default=20, metavar='S',
-                    help='random seed (default: 20)')
 parser.add_argument('--summary_log_dir', default='summary_log/',
                     help='Log dir [default: log]')
 parser.add_argument('--augmentation', type=str, nargs='+', default=['Jitter', 'Shift'],
@@ -57,92 +55,95 @@ parser.add_argument("--seg", type=float, default=1.0,
                     help="Smooth term for position")
 parser.add_argument("--cha", type=float, default=1.0,
                     help="Smooth term for translation, default=-7")
-# parser.add_argument('--filelist', '-t', help='Path to training set ground truth (.txt)', required=True)
-# parser.add_argument('--filelist_val', '-v', help='Path to validation set ground truth (.txt)', required=True)
-parser.add_argument('--log', help='Log to FILE in save folder; use - for stdout (default is log.txt)', metavar='FILE', default='log.txt')
-parser.add_argument('--sample_num', help='downsample number before feed to net', type=int, default=4096)
-parser.add_argument('--step_val', help='downsample number before feed to net', type=int, default=500)
-parser.add_argument('--no_timestamp_folder', help='Dont save to timestamp folder', action='store_true')
-parser.add_argument('--model', '-m', help='Model to use', required=True)
+parser.add_argument('--log', help='Log to FILE in save folder; use - for stdout (default is log.txt)', metavar='FILE',
+                    default='log.txt')
+parser.add_argument('--num_point', help='downsample number before feed to net', type=int, default=8192)
+parser.add_argument('--step_val', help='downsample number before feed to net', type=int, default=200000)
+parser.add_argument('--model_name', '-m', help='Model to use', required=True)
 parser.add_argument('--use_normals', action='store_true')
+parser.add_argument("--train_set", default="train", help="train, train_full")
+parser.add_argument("--config_file", default="semantic.json", help="config file path")
+parser.add_argument("--dataset_name", default="semantic", help="npm, semantic")
 args = parser.parse_args()
 
 GPU_ID = args.gpu_id
-NUM_EPOCH = args.max_epoch
+MAX_EPOCH = args.max_epoch
 BATCH_SIZE_TRAIN = args.batch_size_train
 BATCH_SIZE_VAL = args.batch_size_val
-SAMPLE_NUM = args.sample_num
 STEP_VAL = args.step_val
 TRAIN_AUGMENTATION = get_augmentations_from_list(args.augmentation, upright_axis=args.upright_axis)
 RESUME_MODEL = args.resume_model
-RAND_SEED = args.seed
 SUMMARY_LOG_DIR = args.summary_log_dir
 MODEL_OPTIMIZER = args.optimizer
 INIT_LEARNING_RATE = args.init_learning_rate
-NO_TIMESTAMP_FOLDER = args.no_timestamp_folder
-MODEL_NAME = args.model
+LR_DECAY_STEP = args.lr_decay_step
+LR_DECAY_RATE = args.lr_decay_rate
+MODEL_NAME = args.model_name
 LOG = args.log
+NUM_POINT = args.num_point
 USE_NORMALS = args.use_normals
+DATASET_NAME = args.dataset_name
 
 train_augmentations = get_augmentations_from_list(TRAIN_AUGMENTATION)
-os.environ["CUDA_VISIBLE_DEVICES"] = str(GPU_ID)
-if GPU_ID >= 0:
 
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        raise ValueError("GPU not found!")
-else:
-    device = torch.device("cpu")
-
-SAVE_FOLDER = 'train_log/' + MODEL_NAME
-if not NO_TIMESTAMP_FOLDER:
-    time_string = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-    root_folder = os.path.join(SAVE_FOLDER, '%s_%s_%d' % (MODEL_NAME, time_string, os.getpid()))
-else:
-    root_folder = SAVE_FOLDER
+SAVE_FOLDER = 'train_log/' + MODEL_NAME + '_' + DATASET_NAME
+root_folder = SAVE_FOLDER
 if not os.path.exists(root_folder):
     os.makedirs(root_folder)
 
+if DATASET_NAME == "npm":
+    PARAMS = json.loads(open("npm.json").read())
+    # Import dataset
+    TRAIN_DATASET = NpmDataset(
+        num_points_per_sample=NUM_POINT,
+        split=args.train_set,
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_geometry=PARAMS["use_geometry"],
+        path=PARAMS["data_path"],
+    )
+    VALIDATION_DATASET = NpmDataset(
+        num_points_per_sample=NUM_POINT,
+        split="validation",
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_geometry=PARAMS["use_geometry"],
+        path=PARAMS["data_path"],
+    )
+elif DATASET_NAME == "semantic":
+    PARAMS = json.loads(open(args.config_file).read())
+    # Import dataset
+    TRAIN_DATASET = SemanticDataset(
+        num_points_per_sample=NUM_POINT,
+        split=args.train_set,
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_color=PARAMS["use_color"],
+        use_geometry=PARAMS["use_geometry"],
+        path=PARAMS["data_path"],
+    )
+    VALIDATION_DATASET = SemanticDataset(
+        num_points_per_sample=NUM_POINT,
+        split="validation",
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_color=PARAMS["use_color"],
+        use_geometry=PARAMS["use_geometry"],
+        path=PARAMS["data_path"],
+    )
+else:
+    raise ValueError
+
+num_classes = TRAIN_DATASET.num_classes
+label_weights = TRAIN_DATASET.label_weights
+# start logging
 LOG_FOUT = open(os.path.join(root_folder, LOG), 'w')
+EPOCH_CNT = 0
 LOG_FOUT.write(str(args) + '\n')
 
 print('PID:', os.getpid())
 
 print(args)
-
-# Prepare inputs
-num_classes = 9
-print('{}-Preparing datasets...'.format(datetime.now()))
-filelist = "/home/yss/sda1/yzl/Data/NPM3D/train_data_files.txt"
-val_list = "/home/yss/sda1/yzl/Data/NPM3D/val_data_files.txt"
-is_list_of_h5_list = not data_utils.is_h5_list(filelist)
-
-if is_list_of_h5_list:
-    seg_list = data_utils.load_seg_list(filelist)
-    seg_list_idx = 0
-    filelist_train = seg_list[seg_list_idx]
-    seg_list_idx = seg_list_idx + 1
-else:
-    filelist_train = filelist
-data_train, _, data_num_train, label_train, _ = data_utils.load_seg(filelist_train)
-data_val, _, data_num_val, label_val, _ = data_utils.load_seg(val_list, 1)
-
-unique, unique_count = np.unique(label_train, return_counts=True)
-all_count = np.sum(unique_count)
-count_norm = unique_count / all_count
-
-# shuffle
-data_train, label_train, label_train = data_utils.grouped_shuffle([data_train, data_num_train, label_train])
-
-num_train = data_train.shape[0]
-point_num = data_train.shape[1]
-num_val = data_val.shape[0]
-print('{}-{:d}/{:d} training/validation samples.'.format(datetime.now(), num_train, num_val))
-batch_num = (num_train * NUM_EPOCH + BATCH_SIZE_TRAIN - 1) // BATCH_SIZE_TRAIN
-print('{}-{:d} training batches.'.format(datetime.now(), batch_num))
-batch_num_val = num_val // BATCH_SIZE_VAL
-print('{}-{:d} validation batches per test.'.format(datetime.now(), batch_num_val))
 
 
 def log_string(out_str):
@@ -151,253 +152,291 @@ def log_string(out_str):
     print(out_str)
 
 
-def setup_seed(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    torch.backends.cudnn.deterministic = True
+def update_progress(progress):
+    """
+    Displays or updates a console progress bar
+    Args:
+        progress: A float between 0 and 1. Any int will be converted to a float.
+                  A value under 0 represents a 'halt'.
+                  A value at 1 or bigger represents 100%
+    """
+    bar_length = 10  # Modify this to change the length of the progress bar
+    if isinstance(progress, int):
+        progress = round(float(progress), 2)
+    if not isinstance(progress, float):
+        progress = 0
+    if progress < 0:
+        progress = 0
+    if progress >= 1:
+        progress = 1
+    block = int(round(bar_length * progress))
+    text = "\rProgress: [{}] {}%".format(
+        "#" * block + "-" * (bar_length - block), progress * 100
+    )
+    sys.stdout.write(text)
+    sys.stdout.flush()
 
 
-def weights_init(m):
-    classname = m.__class__.__name__
-    if classname.find('Conv2d') != -1:
-        torch.nn.init.xavier_normal_(m.weight.data)
-        torch.nn.init.constant_(m.bias.data, 0.0)
-    elif classname.find('Linear') != -1:
-        torch.nn.init.xavier_normal_(m.weight.data)
-        torch.nn.init.constant_(m.bias.data, 0.0)
+def get_batch(split):
+    np.random.seed()
+    if split == "train":
+        return TRAIN_DATASET.sample_batch_in_all_files(
+            BATCH_SIZE_TRAIN, augment=True
+        )
+    else:
+        return VALIDATION_DATASET.sample_batch_in_all_files(
+            BATCH_SIZE_VAL, augment=False
+        )
+
+
+def fill_queues(
+    stack_train, stack_validation, num_train_batches, num_validation_batches
+):
+    """
+    Args:
+        stack_train: mp.Queue to be filled asynchronously
+        stack_validation: mp.Queue to be filled asynchronously
+        num_train_batches: total number of training batches
+        num_validation_batches: total number of validationation batches
+    """
+    pool = mp.Pool(processes=mp.cpu_count())
+    launched_train = 0
+    launched_validation = 0
+    results_train = []  # Temp buffer before filling the stack_train
+    results_validation = []  # Temp buffer before filling the stack_validation
+    # Launch as much as n
+    while True:
+        if stack_train.qsize() + launched_train < num_train_batches:
+            results_train.append(pool.apply_async(get_batch, args=("train",)))
+            launched_train += 1
+        elif stack_validation.qsize() + launched_validation < num_validation_batches:
+            results_validation.append(pool.apply_async(get_batch, args=("validation",)))
+            launched_validation += 1
+        for p in results_train:
+            if p.ready():
+                stack_train.put(p.get())
+                results_train.remove(p)
+                launched_train -= 1
+        for p in results_validation:
+            if p.ready():
+                stack_validation.put(p.get())
+                results_validation.remove(p)
+                launched_validation -= 1
+        # Stability
+        time.sleep(0.01)
+
+
+def init_stacking():
+    """
+    Returns:
+        stacker: mp.Process object
+        stack_validation: mp.Queue, use stack_validation.get() to read a batch
+        stack_train: mp.Queue, use stack_train.get() to read a batch
+    """
+    # Queues that contain several batches in advance
+    num_train_batches = TRAIN_DATASET.get_num_batches(BATCH_SIZE_TRAIN)
+    num_validation_batches = VALIDATION_DATASET.get_num_batches(BATCH_SIZE_VAL)
+    print("we have %d batches for train and %d batches for validation in one epoch" %
+          (num_train_batches, num_validation_batches))
+    stack_train = mp.Queue(num_train_batches)
+    stack_validation = mp.Queue(num_validation_batches)
+    stacker = mp.Process(
+        target=fill_queues,
+        args=(
+            stack_train,
+            stack_validation,
+            num_train_batches,
+            num_validation_batches,
+        ),
+    )
+    stacker.start()
+    return stacker, stack_validation, stack_train
+
+
+def train_one_epoch(stack, scheduler, model, criterion, device, train_writer):
+    global EPOCH_CNT
+    num_batches = TRAIN_DATASET.get_num_batches(BATCH_SIZE_TRAIN)
+
+    log_string(str(datetime.now()))
+    update_progress(0)
+    # Reset metrics
+    loss_sum = 0
+    confusion_matrix = metric.ConfusionMatrix(num_classes)
+
+    # Train over num_batches batches
+    for batch_idx in range(num_batches):
+        # Refill more batches if empty
+        progress = float(batch_idx) / float(num_batches)
+        update_progress(round(progress, 2))
+        batch_data, batch_label, batch_weights = stack.get()
+
+        # Get predicted labels
+        points_tensor = torch.from_numpy(batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
+        batch_label_tensor = torch.from_numpy(batch_label).to(device, dtype=torch.long)  # (B, sample_num)
+        scheduler.optimizer.zero_grad()
+        model = model.train()
+        points_prob = run_model(model, points_tensor, PARAMS, MODEL_NAME)  # (B, sample_num, num_classes), (B, sample_num, 3)
+        batch_loss = criterion(points_prob, batch_label_tensor)
+        _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
+        batch_loss.backward()
+        scheduler.optimizer.step()
+        scheduler.step()
+
+        # Update metrics
+        pred_val = points_pred.cpu().numpy()
+        for i in range(len(pred_val)):
+            for j in range(len(pred_val[i])):
+                confusion_matrix.increment(batch_label[i][j], pred_val[i][j])
+        loss_sum += batch_loss.cpu().detach().numpy()
+    update_progress(1)
+    EPOCH_CNT += 1
+    log_string("mean loss: %f" % (loss_sum / float(num_batches)))
+    log_string("Overall accuracy : %f" % (confusion_matrix.get_accuracy()))
+    log_string("Average IoU : %f" % (confusion_matrix.get_mean_iou()))
+    train_writer.add_scalar("%s mean loss" % DATASET_NAME, loss_sum / float(num_batches), EPOCH_CNT)
+    train_writer.add_scalar("%s overall accuracy" % DATASET_NAME, confusion_matrix.get_accuracy(), EPOCH_CNT)
+    train_writer.add_scalar("%s average IoU" % DATASET_NAME, confusion_matrix.get_mean_iou(), EPOCH_CNT)
+    iou_per_class = confusion_matrix.get_per_class_ious()
+    iou_per_class = [0] + iou_per_class  # label 0 is ignored
+    for i in range(1, num_classes):
+        log_string("IoU of %s : %f" % (TRAIN_DATASET.labels_names[i], iou_per_class[i]))
+
+
+def eval_one_epoch(stack, model, criterion, device, val_writer):
+    num_batches = VALIDATION_DATASET.get_num_batches(BATCH_SIZE_VAL)
+
+    # Reset metrics
+    loss_sum = 0
+    confusion_matrix = metric.ConfusionMatrix(num_classes)
+
+    log_string(str(datetime.now()))
+
+    log_string("---- EPOCH %03d EVALUATION ----" % (EPOCH_CNT))
+
+    update_progress(0)
+
+    for batch_idx in range(num_batches):
+        progress = float(batch_idx) / float(num_batches)
+        update_progress(round(progress, 2))
+        batch_data, batch_label, batch_weights = stack.get()
+
+        # Get predicted labels
+        points_tensor = torch.from_numpy(batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
+        batch_label_tensor = torch.from_numpy(batch_label).to(device, dtype=torch.long)  # (B, sample_num)
+        model = model.eval()
+        with torch.no_grad():
+            points_prob = run_model(model, points_tensor, PARAMS, MODEL_NAME)  # (B, sample_num, num_classes), (B, sample_num, 3)
+            batch_loss = criterion(points_prob, batch_label_tensor)
+        _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
+
+        # Update metrics
+        pred_val = points_pred.cpu().numpy()
+        for i in range(len(pred_val)):
+            for j in range(len(pred_val[i])):
+                confusion_matrix.increment(batch_label[i][j], pred_val[i][j])
+        loss_sum += batch_loss.cpu().numpy()
+
+    update_progress(1)
+
+    iou_per_class = confusion_matrix.get_per_class_ious()
+
+    # Display metrics
+    log_string("mean loss: %f" % (loss_sum / float(num_batches)))
+    log_string("Overall accuracy : %f" % (confusion_matrix.get_accuracy()))
+    log_string("Average IoU : %f" % (confusion_matrix.get_mean_iou()))
+    val_writer.add_scalar("%s mean loss" % DATASET_NAME, loss_sum / float(num_batches), EPOCH_CNT)
+    val_writer.add_scalar("%s overall accuracy" % DATASET_NAME, confusion_matrix.get_accuracy(), EPOCH_CNT)
+    val_writer.add_scalar("%s average IoU" % DATASET_NAME, confusion_matrix.get_mean_iou(), EPOCH_CNT)
+    iou_per_class = [0] + iou_per_class  # label 0 is ignored
+    for i in range(1, num_classes):
+        log_string(
+            "IoU of %s : %f" % (VALIDATION_DATASET.labels_names[i], iou_per_class[i])
+        )
+
+    return confusion_matrix.get_accuracy()
 
 
 def train():
-    global num_train, data_train, data_num_train, label_train, seg_list_idx
-    setup_seed(RAND_SEED)
+    os.makedirs(os.path.join(root_folder, SUMMARY_LOG_DIR), exist_ok=True)
     train_writer = SummaryWriter(os.path.join(root_folder, SUMMARY_LOG_DIR, 'train'))
     val_writer = SummaryWriter(os.path.join(root_folder, SUMMARY_LOG_DIR, 'val'))
 
     # set model and criterion
-    if MODEL_NAME == 'pointnet':
-        model = PointNetDenseCls(num_classes)
-        criterion = PointnetCriterion()
-    elif MODEL_NAME == 'pointnet2':
-        model = PointNet2Seg(num_classes)
-        criterion = PointnetCriterion()
-    elif MODEL_NAME == 'pointcnn':
-        model = PointCNN_seg(num_classes)
-        criterion = PointnetCriterion()
+    if torch.cuda.is_available():
+        device = torch.device("cuda:%d" % GPU_ID)
     else:
-        raise ValueError
+        raise ValueError("GPU not found!")
+    label_weights_tensor = torch.from_numpy(label_weights).to(device)
+    model, criterion = select_model(MODEL_NAME, num_classes, PARAMS, weights=label_weights_tensor)
     model = model.to(device)
+    criterion = criterion.to(device)
 
     if MODEL_OPTIMIZER == 'momentum':
-        optimizer = torch.optim.SGD(model.parameters(), INIT_LEARNING_RATE, weight_decay=1e-4)
+        optimizer = torch.optim.SGD(model.parameters(), INIT_LEARNING_RATE)
     elif MODEL_OPTIMIZER == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), INIT_LEARNING_RATE, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(model.parameters(), INIT_LEARNING_RATE)
     else:
         optimizer = None
         exit(0)
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 100, gamma=0.95)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, LR_DECAY_STEP, gamma=LR_DECAY_RATE)
 
     if len(RESUME_MODEL) > 0:
         resume_path = os.path.join(root_folder, RESUME_MODEL)
         print("Resuming From ", resume_path)
         checkpoint = torch.load(resume_path)
         saved_state_dict = checkpoint['state_dict']
-        start_iter = checkpoint['iter']
+        start_epoch = checkpoint['epoch']
         model.load_state_dict(saved_state_dict)
         scheduler.load_state_dict(checkpoint['scheduler'])
     else:
-        start_iter = 0
-        # model = model.apply(weights_init)
-
-    if GPU_ID >= 0:
-        model = nn.DataParallel(model)  # as we only use one gpu, it does't change anything...
+        start_epoch = 0
 
     LOG_FOUT.write("\n")
     LOG_FOUT.flush()
     parameter_num = np.sum([np.prod(list(v.shape)) for v in model.parameters()])
     log_string('{}-Parameter number: {:d}.'.format(datetime.now(), parameter_num))
 
-    CM = ConfusionMatrix(num_classes)
-    for batch_idx_train in range(start_iter, batch_num):
-        # validation
-        if (batch_idx_train % STEP_VAL == 0 and (batch_idx_train != 0 or RESUME_MODEL is not None)) \
-                or batch_idx_train == batch_num - 1:
-            if isinstance(model, nn.DataParallel):
-                model_to_save = model.module
-            else:
-                model_to_save = model
-            torch.save({
-                'iter': batch_idx_train,
-                'state_dict': model_to_save.state_dict(),
-                'scheduler': scheduler.state_dict(),
-            }, os.path.join(root_folder, 'checkpoint_iter{}.tar'.format(batch_idx_train)))
-            print("Model Saved As " + 'checkpoint_iter{}.tar'.format(batch_idx_train))
+    # start training
+    stacker, stack_validation, stack_train = init_stacking()
+    best_acc = 0
+    for epoch in range(start_epoch, MAX_EPOCH):
+        print("in epoch", epoch)
+        print("max_epoch", MAX_EPOCH)
 
-            # calculate train performance
-            mIOU = CM.get_average_intersection_union()
-            OA = CM.get_overall_accuracy()
-            log_string('train mIOU: %f' % mIOU)
-            log_string('train OA: %f' % OA)
-            CM.__init__(num_classes)
+        log_string("**** EPOCH %03d ****" % (epoch + 1))
+        sys.stdout.flush()
 
-            val_one_epoch(model,
-                          [data_val, data_num_val, label_val, batch_num_val,
-                           num_val, 'npm3d'], val_writer, device, batch_idx_train, criterion)
-            criterion = criterion.train()
+        # Train one epoch
+        train_one_epoch(stack_train, scheduler, model, criterion, device, train_writer)
+        # Evaluate, save, and compute the accuracy
+        if epoch % 5 == 0:
+            acc = eval_one_epoch(stack_validation, model, criterion, device, val_writer)
+            save_path = os.path.join(root_folder, 'checkpoint_epoch%d_acc%.2f.tar' % (epoch, acc))
+            if acc > best_acc:
+                best_acc = acc
+                torch.save({
+                    'epoch': epoch + 1,
+                    'state_dict': model.state_dict(),
+                    'scheduler': scheduler.state_dict(),
+                }, save_path)
+                log_string("Model saved in file: %s" % save_path)
+                print("Model saved in file: %s" % save_path)
 
-        # data prepare
-        start_idx = (BATCH_SIZE_TRAIN * batch_idx_train) % num_train
-        end_idx = min(start_idx + BATCH_SIZE_TRAIN, num_train)
-        batch_size_train = end_idx - start_idx
-        if batch_size_train <= 1:
-            continue
-        points_batch = data_train[start_idx:end_idx, ...]  # (B, N, C)
-        # we only use location(x,y,z) information and ignore other information like rgb, intensity
-        points_batch = points_batch[:, :, :3]  # (B, N, 3)
-        points_num_batch = data_num_train[start_idx:end_idx, ...]  # (B)
-        labels_batch = label_train[start_idx:end_idx, ...]  # (B, N)
+            # Save the variables to disk.
+            if epoch % 10 == 0:
+                torch.save({
+                    'epoch': epoch + 1,
+                    'state_dict': model.state_dict(),
+                    'scheduler': scheduler.state_dict(),
+                }, save_path)
+                log_string("Model saved in file: %s" % save_path)
+                print("Model saved in file: %s" % save_path)
 
-        # replace training dataset if previous training dataset is run out
-        if start_idx + batch_size_train == num_train:
-            if is_list_of_h5_list:
-                filelist_train_prev = seg_list[(seg_list_idx - 1) % len(seg_list)]
-                filelist_train = seg_list[seg_list_idx % len(seg_list)]
-                # don't update train data if len(seg_list) == 1
-                if filelist_train != filelist_train_prev:
-                    data_train, _, data_num_train, label_train, _ = data_utils.load_seg(filelist_train)
-                    num_train = data_train.shape[0]
-                seg_list_idx = seg_list_idx + 1
-            data_train, data_num_train, label_train = \
-                data_utils.grouped_shuffle([data_train, data_num_train, label_train])
-
-        batch_indices = np.arange(batch_size_train, dtype=np.long).reshape(batch_size_train, 1).repeat(SAMPLE_NUM, axis=1)  # (B, sample_num)
-        # sample semantic3d
-        sample_indices = basics_util.get_indices(batch_size_train, SAMPLE_NUM, points_num_batch)  # (B, sample_num)
-        points_sampled = points_batch[batch_indices, sample_indices]  # (B, sample_num, 3)
-        labels_sampled = labels_batch[batch_indices, sample_indices]  # (B, sample_num)
-
-        # augmentation
-        for idx in range(0, batch_size_train):
-            for a in train_augmentations:
-                points_sampled[idx, :, :3] = a.apply(points_sampled[idx, :, :3])
-
-        # normalize data
-        points_sampled = basics_util.normalize_data(points_sampled)  # (B, sample_num, 3)
-        # convert to tensor
-        points_tensor = torch.from_numpy(points_sampled).to(device, dtype=torch.float32)  # (B, sample_num, 3)
-        labels_tensor = torch.from_numpy(labels_sampled).to(device, dtype=torch.long)  # (B, sample_num)
-
-        # run model and then optimize
-        scheduler.optimizer.zero_grad()
-        points_prob = run_model(model, points_tensor.permute(0, 2, 1))  # (B, sample_num, num_classes), (B, sample_num, 3)
-        _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
-        points_pred = points_pred.cpu().numpy()
-        new_class_labels = labels_sampled.flatten()
-        new_class_pred = points_pred.flatten()
-        CM.count_predicted(new_class_labels, new_class_pred)
-        batch_loss = criterion(points_prob, labels_tensor)
-        batch_loss.backward()
-        scheduler.optimizer.step()
-        scheduler.step()
-        log_string('iter: %d, Loss: %f' % (batch_idx_train, batch_loss))
-        train_writer.add_scalar('Loss', batch_loss.cpu().item(), batch_idx_train)
-
-
-def val_one_epoch(model, dataset_relevant, val_writer, device, batch_idx_train, criterion):
-    criterion = criterion.eval()
-    data_val, data_num_val, label_val, batch_num_val, num_val, dataset_name = dataset_relevant
-    val_classes = num_classes
-    CM = ConfusionMatrix(val_classes)
-    batch_loss_count = 0
-    batch_num_count = 0
-    for batch_val_idx in tqdm(range(batch_num_val // 10)):
-        start_idx = BATCH_SIZE_VAL * batch_val_idx
-        end_idx = min(start_idx + BATCH_SIZE_VAL, num_val)
-        batch_size_val = end_idx - start_idx
-        points_batch = data_val[start_idx:end_idx, ...]  # (B, N, C)
-        # we only use location(x,y,z) information and ignore other information like rgb, intensity
-        points_batch = points_batch[:, :, :3]  # (B, N, 3)
-        points_num_batch = data_num_val[start_idx:end_idx, ...]  # (B)
-        labels_batch = label_val[start_idx:end_idx, ...]  # (B, N)
-
-        sample_indices = basics_util.get_indices(batch_size_val, SAMPLE_NUM, points_num_batch)  # (B, sample_num)
-        batch_indices = np.arange(batch_size_val, dtype=np.long).reshape(batch_size_val, 1).repeat(SAMPLE_NUM, axis=-1)  # (B, sample_num)
-        points_sampled = points_batch[batch_indices, sample_indices]  # (B, sample_num, 3)
-        labels_sampled = labels_batch[batch_indices, sample_indices]  # (B, sample_num)
-
-        # normalize data
-        points_sampled = basics_util.normalize_data(points_sampled)  # (B, sample_num, 3)
-        # convert to tensor
-        points_tensor = torch.from_numpy(points_sampled).to(device, dtype=torch.float32)  # (B, sample_num, 3)
-        labels_tensor = torch.from_numpy(labels_sampled).to(device, dtype=torch.long)
-
-        points_prob = run_model(model, points_tensor.permute(0, 2, 1), validate=True)  # (B, sample_num, num_classes)
-        batch_loss = criterion(points_prob, labels_tensor)
-        batch_loss_count += batch_loss
-        batch_num_count += 1
-        _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
-        points_pred = points_pred.cpu().numpy()  # (B, sample_num)
-        new_class_labels = labels_sampled.flatten()
-        new_class_pred = points_pred.flatten()
-        CM.count_predicted(new_class_labels, new_class_pred)
-    mIOU = CM.get_average_intersection_union()
-    OA = CM.get_overall_accuracy()
-    ave_loss = batch_loss_count / batch_num_count
-    ave_loss = ave_loss.cpu().numpy()
-    log_string('average val loss is %f' % ave_loss)
-    log_string('%s mIOU: %f' % (dataset_name, mIOU))
-    log_string('%s OA: %f' % (dataset_name, OA))
-    val_writer.add_scalar('%s mIOU' % dataset_name, mIOU, batch_idx_train)
-    val_writer.add_scalar('%s OA' % dataset_name, OA, batch_idx_train)
-
-
-# def convert2new(labels, pred):
-#     """
-#     convert semantic label and npm label to new class
-#     :param labels: (N,) npm groundtruth label available by dataset
-#     :param pred: (N,) semantic prediction label availabel by model
-#     :return: (n,), (n,)
-#     """
-#     semantic2new = {0: 0, 1: 1, 2: 1, 3: 1, 4: 2, 5: 3, 6: -1, 7: 4}
-#     npm2new = {0: 0, 1: 2, 2: 3, 3: 3, 4: 3, 5: 3, 6: -1, 7: 4, 8: 1}
-#     N = len(labels)
-#     for i in range(N):
-#         labels[i] = npm2new[labels[i]]
-#         pred[i] = semantic2new[pred[i]]
-#     indices = np.logical_and(labels != -1, pred != -1)
-#     labels = labels[indices]
-#     pred = pred[indices]
-#     return labels, pred
-
-
-def run_model(model, P, validate=False):
-
-    if not validate:
-        model = model.train()
-        if MODEL_NAME == 'pointnet':
-            res, _, _ = model(P)
-        elif MODEL_NAME == 'pointnet2':
-            res, _ = model(P)
-        elif MODEL_NAME == 'pointcnn':
-            P_permute = P.permute(0, 2, 1)
-            res = model(P_permute, P_permute)
-        else:
-            raise ValueError
-    else:
-        model = model.eval()
-        with torch.no_grad():
-            if MODEL_NAME == 'pointnet':
-                res, _, _ = model(P)
-            elif MODEL_NAME == 'pointnet2':
-                res, _ = model(P)
-            elif MODEL_NAME == 'pointcnn':
-                P_permute = P.permute(0, 2, 1)
-                res = model(P_permute, P_permute)
-            else:
-                raise ValueError
-    return res
+    # Kill the process, close the file and exit
+    stacker.terminate()
+    LOG_FOUT.close()
+    sys.exit()
 
 
 if __name__ == "__main__":

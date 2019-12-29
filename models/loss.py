@@ -41,8 +41,9 @@ def distChamfer(x, y):
 
 
 class PointnetCriterion(nn.Module):
-    def __init__(self):
+    def __init__(self, weights=None):
         super(PointnetCriterion, self).__init__()
+        self.label_weights = weights
 
     def forward(self, seg_prob, seg_label):
         """
@@ -57,34 +58,39 @@ class PointnetCriterion(nn.Module):
             B, N, num_classes = seg_prob.shape
             seg_prob = seg_prob.contiguous().view(B*N, num_classes)
             seg_label = seg_label.view(B*N)
-        seg_loss = F.nll_loss(seg_prob, seg_label, reduction='none')  # (B,)
+        seg_loss = F.nll_loss(seg_prob, seg_label, reduction='none', weight=self.label_weights)  # (B,)
         seg_loss = torch.mean(seg_loss)  # scalar
 
         return seg_loss
 
 
-class Criterion(nn.Module):
-    def __init__(self):
-        super(Criterion, self).__init__()
+class Criterion_cross(nn.Module):
+    def __init__(self, weights=None):
+        super(Criterion_cross, self).__init__()
         self.seg = 1
         self.cha = 1
+        self.label_weights = weights
 
-    def forward(self, seg_prob, seg_label, point_rec, point):
+    def forward(self, seg_prob, seg_label, point_rec, point_ori):
         """
         calculate semantic segmentation and chamfer distance
         :arg
         seg_prob: tensor(B, N, num_class),  log-probabilities of each class
         seg_label: Long tensor(B, N)
         point_rec: tensor(B, N, 3)
-        point: tensor(B, N, 3), original point cloud
+        point_ori: tensor(B, N, 3), original point cloud
         :return (B
         """
         # semantic segmentation loss
-        seg_loss = F.nll_loss(seg_prob.permute(0, 2, 1), seg_label, reduction='none')  # (B, N)
+        if len(seg_prob.shape) == 3:
+            B, N, num_classes = seg_prob.shape
+            seg_prob = seg_prob.contiguous().view(B * N, num_classes)
+            seg_label = seg_label.view(B * N)
+        seg_loss = F.nll_loss(seg_prob, seg_label, reduction='none', weight=self.label_weights)  # (B,)
         seg_loss = torch.mean(seg_loss)  # scalar
 
         # chamfer distance loss
-        dist1, dist2 = distChamfer(point_rec, point)  # (b, N), (b, N)
+        dist1, dist2 = distChamfer(point_rec, point_ori)  # (b, N), (b, N)
         cha_loss = torch.mean(dist1) + torch.mean(dist2)  # scalar
 
         # all loss
@@ -96,9 +102,8 @@ class Criterion(nn.Module):
 class Criterion_lr(nn.Module):
     def __init__(self, seg=1.0, cha=1.0, learn_gamma=True):
         super(Criterion_lr, self).__init__()
-        self.seg = nn.Parameter(torch.tensor([seg], requires_grad=learn_gamma, device='cuda:0'))
-
-        self.cha = nn.Parameter(torch.tensor([cha], requires_grad=learn_gamma, device='cuda:0'))
+        self.seg = nn.Parameter(torch.tensor([seg], requires_grad=learn_gamma))
+        self.cha = nn.Parameter(torch.tensor([cha], requires_grad=learn_gamma))
 
     def forward(self, seg_pred, seg, point_pred, point):
         """

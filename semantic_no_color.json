@@ -1,5 +1,5 @@
 {
-    "data_path": "/home/yss/sda1/yzl/open3d_pointnet2/dataset/semantic_downsampled",
+    "data_path": "/home/yss/sda1/yzl/Data/semantic_downsampled",
     "use_geometry": 0,
     "use_color": 0,
     "box_size_x": 10,

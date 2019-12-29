@@ -9,9 +9,9 @@ import numpy as np
 import torch
 from data.augment import get_augmentations_from_list
 from models.pointnet import PointNetDenseCls
-from models.loss import PointnetCriterion
+from models.loss import PointnetCriterion,Criterion_cross
 from models.pointnet2 import PointNet2Seg
-from models.pointSemantic import PointSemantic
+from models.pointSemantic import PointSemantic, PointSemantic_cross
 from pointcnn_utils.pointcnn import PointCNN_seg
 from tensorboardX import SummaryWriter
 from torch.backends import cudnn
@@ -24,7 +24,7 @@ from datetime import datetime
 from utils import metric
 
 
-def run_model(model, input_tensor, params, model_name):
+def run_model(model, input_tensor, params, model_name, another_input=None):
     """
 
     :param model:
@@ -44,31 +44,40 @@ def run_model(model, input_tensor, params, model_name):
         res = model(points, features)
     elif model_name == 'pointsemantic':
         res = model(input_tensor)
+    elif model_name == 'pointsemantic_cross':
+        res = model(input_tensor, another_input)
     else:
         raise ValueError
     return res
 
 
-def select_model(model_name, num_classes, params):
+def select_model(model_name, num_classes, params, weights=None):
     if model_name == 'pointnet':
         model = PointNetDenseCls(num_classes)
-        criterion = PointnetCriterion()
+        criterion = PointnetCriterion(weights=weights)
     elif model_name == 'pointnet2':
         if params['use_color']:
             model = PointNet2Seg(num_classes, with_rgb=params['use_color'])
         else:
             model = PointNet2Seg(num_classes)
-        criterion = PointnetCriterion()
+        criterion = PointnetCriterion(weights=weights)
     elif model_name == 'pointcnn':
         model = PointCNN_seg(num_classes)
-        criterion = PointnetCriterion()
+        criterion = PointnetCriterion(weights=weights)
     elif model_name == 'pointsemantic':
         if params['use_geometry']:
             addition_channel = 7
         else:
             addition_channel = 0
         model = PointSemantic(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)
-        criterion = PointnetCriterion()
+        criterion = PointnetCriterion(weights=weights)
+    elif model_name == 'pointsemantic_cross':
+        if params['use_geometry']:
+            addition_channel = 7
+        else:
+            addition_channel = 0
+        model = PointSemantic_cross(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)
+        criterion = Criterion_cross(weights=weights)
     else:
         raise ValueError
 
