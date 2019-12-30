@@ -85,7 +85,7 @@ DATASET_NAME = args.dataset_name
 
 train_augmentations = get_augmentations_from_list(TRAIN_AUGMENTATION)
 
-SAVE_FOLDER = 'train_log/' + MODEL_NAME + DATASET_NAME
+SAVE_FOLDER = 'train_log/' + MODEL_NAME + '_' + DATASET_NAME
 root_folder = SAVE_FOLDER
 if not os.path.exists(root_folder):
     os.makedirs(root_folder)

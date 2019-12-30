@@ -23,6 +23,7 @@ def func1():
 # txt_fname = 'scan.txt'
 # txt_path = os.path.join(folder, txt_fname)
 # scan = np.genfromtxt(txt_path, delimiter=' ', max_rows=10)
-
-(a, b) = func1()
+l = []
+if l:
+    print("test")
 print('done')

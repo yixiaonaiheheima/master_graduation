@@ -13,6 +13,7 @@ def _label_to_colors(labels):
         6: [128, 0, 128],  # purple
         7: [0, 0, 128],  # navy
         8: [128, 128, 0],  # olive
+        9: [0, 128, 128]
     }
     return np.array([map_label_to_color[label] for label in labels]).astype(np.int32)
 

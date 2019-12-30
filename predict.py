@@ -9,13 +9,14 @@ from data.semantic_dataset import SemanticDataset
 from data.npm_dataset import NpmDataset
 from utils.metric import ConfusionMatrix
 from utils.model_util import select_model, run_model
-from utils.eval_utils import convert2new
+from utils.eval_utils import _2common
+from utils.point_cloud_util import _label_to_colors
 
 
 # Parser
 parser = argparse.ArgumentParser()
-parser.add_argument('--gpu_id', type=int, default=0, help='gpu id for network')
-parser.add_argument("--num_samples", type=int, default=500, help="# samples, each contains num_point points_centered")
+parser.add_argument('--gpu_id', type=int, default=1, help='gpu id for network')
+parser.add_argument("--num_samples", type=int, default=1000, help="# samples, each contains num_point points_centered")
 parser.add_argument("--resume_model", default="/home/yss/sda1/yzl/yzl_graduation/train_log/pointnet2_semantic_row7/checkpoint_epoch70_acc0.8707133112726985.tar", help="restore checkpoint file storing model parameters")
 parser.add_argument("--config_file", default="semantic.json",
                     help="config file path, it should same with that during traing")
@@ -85,6 +86,7 @@ if __name__ == "__main__":
 
     # Process each file
     cm = ConfusionMatrix(num_classes)
+    common_cm = ConfusionMatrix(6)
     model = model.eval()
     for file_data in dataset.list_file_data:
         print("Processing {}".format(file_data.file_path_without_ext))
@@ -93,6 +95,7 @@ if __name__ == "__main__":
         points_collector = []
         pd_labels_collector = []
         pd_prob_collector = []
+        pd_common_labels_collector = []
 
         # If flags.num_samples < batch_size, will predict one batch
         for batch_index in range(int(np.ceil(flags.num_samples / batch_size))):
@@ -128,35 +131,59 @@ if __name__ == "__main__":
             pd_labels = pd_labels.cpu().numpy()
             print("Batch size: {}, time: {}".format(current_batch_size, time.time() - s))
 
-            if flags.from_dataset == 'semantic' and flags.to_dataset == 'npm':
-                gt_labels, pd_labels = convert2new(gt_labels, pd_labels)
+            common_gt = _2common(gt_labels, flags.to_dataset)  # (B, N)
+            common_pd = _2common(pd_labels, flags.from_dataset)  # (B, N)
 
             # Save to collector for file output
             points_collector.extend(points)  # (B, N, 3)
             pd_labels_collector.extend(pd_labels)  # (B, N)
+            pd_common_labels_collector.extend(common_pd)  # (B, N)
             pd_prob_collector.extend(pd_prob)  # (B, N, num_classes)
 
             # Increment confusion matrix
-            cm.increment_from_list(gt_labels.flatten(), pd_labels.flatten())
+
+            common_cm.increment_from_list(common_gt.flatten(), common_pd.flatten())
+            if flags.from_dataset == flags.to_dataset:
+                cm.increment_from_list(gt_labels.flatten(), pd_labels.flatten())
 
         # Save sparse point cloud and predicted labels
         file_prefix = os.path.basename(file_data.file_path_without_ext)
 
         sparse_points = np.array(points_collector).reshape((-1, 3))  # (B*N, 3)
-        pcd = open3d.geometry.PointCloud()
-        pcd.points = open3d.utility.Vector3dVector(sparse_points)
-        pcd_path = os.path.join(output_dir, file_prefix + ".pcd")
-        open3d.io.write_point_cloud(pcd_path, pcd)
-        print("Exported sparse pcd to {}".format(pcd_path))
+        sparse_common_labels = np.array(pd_common_labels_collector).flatten()
+        pcd_common = open3d.geometry.PointCloud()
+        pcd_common.points = open3d.utility.Vector3dVector(sparse_points)
+        pcd_common.colors = open3d.utility.Vector3dVector(_label_to_colors(sparse_common_labels))
+        pcd_path = os.path.join(output_dir, file_prefix + "_common.pcd")
+        open3d.io.write_point_cloud(pcd_path, pcd_common)
+        print("Exported sparse common pcd to {}".format(pcd_path))
 
-        sparse_labels = np.array(pd_labels_collector).astype(int).flatten()
-        pd_labels_path = os.path.join(output_dir, file_prefix + ".labels")
-        np.savetxt(pd_labels_path, sparse_labels, fmt="%d")
-        print("Exported sparse labels to {}".format(pd_labels_path))
+        pd_labels_path = os.path.join(output_dir, file_prefix + "_common.labels")
+        np.savetxt(pd_labels_path, sparse_common_labels, fmt="%d")
+        print("Exported sparse common labels to {}".format(pd_labels_path))
 
         sparse_prob = np.array(pd_prob_collector).astype(float).flatten()
         pd_probs_path = os.path.join(output_dir, file_prefix + ".prob")
         np.savetxt(pd_probs_path, sparse_prob, fmt="%f")
         print("Exported sparse probs to {}".format(pd_probs_path))
 
-    cm.print_metrics()
+        # save original labels and visulize them if from_dataset is equal to to_dataset
+        if flags.from_dataset == flags.to_dataset:
+            sparse_labels = np.array(pd_labels_collector).astype(int).flatten()
+            pcd_ori = open3d.geometry.PointCloud()
+            pcd_ori.points = open3d.utility.Vector3dVector(sparse_points)
+            pcd_ori.colors = open3d.utility.Vector3dVector(_label_to_colors(sparse_labels))
+            pcd_ori_path = os.path.join(output_dir, file_prefix + ".pcd")
+            open3d.io.write_point_cloud(pcd_ori_path, pcd_ori)
+            print("Exported sparse pcd to {}".format(pcd_ori_path))
+
+            pd_ori_labels_path = os.path.join(output_dir, file_prefix + ".labels")
+            np.savetxt(pd_ori_labels_path, sparse_labels, fmt="%d")
+            print("Exported sparse labels to {}".format(pd_ori_labels_path))
+
+    print("the following is the result of common class:")
+    common_cm.print_metrics()
+    print("#" * 100)
+    if flags.from_dataset == flags.to_dataset:
+        print("the following is the result of original class:")
+        cm.print_metrics()

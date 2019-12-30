@@ -1,5 +1,6 @@
 # *_*coding:utf-8 *_*
 import os
+import open3d
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -9,20 +10,24 @@ from collections import defaultdict
 import datetime
 import pandas as pd
 import torch.nn.functional as F
+
+
 def to_categorical(y, num_classes):
     """ 1-hot encodes a tensor """
-    new_y = torch.eye(num_classes)[y.cpu().data.numpy(),]
-    if (y.is_cuda):
+    new_y = torch.eye(num_classes)[y.cpu().data.numpy(), ]
+    if y.is_cuda:
         return new_y.cuda()
     return new_y
 
-def show_example(x, y, x_reconstruction, y_pred,save_dir, figname):
-    x = x.squeeze().cpu().data.numpy()
-    x = x.permute(0,2,1)
-    y = y.cpu().data.numpy()
+
+# it not correct visualization, I think...
+def show_example(x, y, x_reconstruction, y_pred, save_dir, figname):
+    x = x.squeeze().cpu().data.numpy()  # (B, 3, N)
+    x = x.permute(0, 2, 1)  # (B, N, 3)
+    y = y.cpu().data.numpy()  # (B, N)
     x_reconstruction = x_reconstruction.squeeze().cpu().data.numpy()
-    _, y_pred = torch.max(y_pred, -1)
-    y_pred = y_pred.cpu().data.numpy()
+    _, y_pred = torch.max(y_pred, -1)  # (B, N)
+    y_pred = y_pred.cpu().data.numpy()  # (B, N)
 
     fig, ax = plt.subplots(1, 2)
     ax[0].imshow(x, cmap='Greys')
@@ -30,6 +35,7 @@ def show_example(x, y, x_reconstruction, y_pred,save_dir, figname):
     ax[1].imshow(x_reconstruction, cmap='Greys')
     ax[1].set_title('Output: %d' % y_pred)
     plt.savefig(save_dir + figname + '.png')
+
 
 def save_checkpoint(epoch, train_accuracy, test_accuracy, model, optimizer, path,modelnet='checkpoint'):
     savepath  = path + '/%s-%f-%04d.pth' % (modelnet,test_accuracy, epoch)
@@ -41,6 +47,7 @@ def save_checkpoint(epoch, train_accuracy, test_accuracy, model, optimizer, path
         'optimizer_state_dict': optimizer.state_dict(),
     }
     torch.save(state, savepath)
+
 
 def test(model, loader):
     mean_correct = []
@@ -55,6 +62,7 @@ def test(model, loader):
         correct = pred_choice.eq(target.long().data).cpu().sum()
         mean_correct.append(correct.item()/float(points.size()[0]))
     return np.mean(mean_correct)
+
 
 def compute_cat_iou(pred,target,iou_tabel):
     iou_list = []
@@ -78,6 +86,7 @@ def compute_cat_iou(pred,target,iou_tabel):
             iou_list.append(iou)
     return iou_tabel,iou_list
 
+
 def compute_overall_iou(pred, target, num_classes):
     shape_ious = []
     pred_np = pred.cpu().data.numpy()
@@ -94,6 +103,7 @@ def compute_overall_iou(pred, target, num_classes):
             part_ious.append(iou)
         shape_ious.append(np.mean(part_ious))
     return shape_ious
+
 
 def test_partseg(model, loader, catdict, num_classes = 50,forpointnet2=False):
     ''' catdict = {0:Airplane, 1:Airplane, ...49:Table} '''
@@ -136,6 +146,7 @@ def test_partseg(model, loader, catdict, num_classes = 50,forpointnet2=False):
 
     return metrics, hist_acc, cat_iou
 
+
 def test_semseg(model, loader, catdict, num_classes = 13, pointnet2=False):
     iou_tabel = np.zeros((len(catdict),3))
     metrics = defaultdict(lambda:list())
@@ -174,7 +185,8 @@ def compute_avg_curve(y, n_points_avg):
     rolling_mean = np.convolve(y, avg_kernel, mode='valid')
     return rolling_mean
 
-def plot_loss_curve(history,n_points_avg,n_points_plot,save_dir):
+
+def plot_loss_curve(history, n_points_avg, n_points_plot, save_dir):
     curve = np.asarray(history['loss'])[-n_points_plot:]
     avg_curve = compute_avg_curve(curve, n_points_avg)
     plt.plot(avg_curve, '-g')
@@ -191,7 +203,8 @@ def plot_loss_curve(history,n_points_avg,n_points_plot,save_dir):
     plt.savefig(save_dir + '/'+ str(datetime.datetime.now().strftime('%Y-%m-%d %H-%M')) + '_total_result.png')
     plt.close()
 
-def plot_acc_curve(total_train_acc,total_test_acc,save_dir):
+
+def plot_acc_curve(total_train_acc, total_test_acc, save_dir):
     plt.plot(total_train_acc, '-b',label = 'train_acc')
     plt.plot(total_test_acc, '-r',label = 'test_acc')
     plt.legend()
@@ -201,9 +214,10 @@ def plot_acc_curve(total_train_acc,total_test_acc,save_dir):
     plt.savefig(save_dir +'/'+ str(datetime.datetime.now().strftime('%Y-%m-%d %H-%M'))+'_total_acc.png')
     plt.close()
 
-def show_point_cloud(tuple,seg_label=[],title=None):
+
+def show_point_cloud(tuple, seg_label=[], title=None):
     import matplotlib.pyplot as plt
-    if seg_label == []:
+    if not seg_label:
         x = [x[0] for x in tuple]
         y = [y[1] for y in tuple]
         z = [z[2] for z in tuple]
@@ -214,7 +228,7 @@ def show_point_cloud(tuple,seg_label=[],title=None):
         ax.set_xlabel('X')
     else:
         category = list(np.unique(seg_label))
-        color = ['b','r','g','y','w','b','p']
+        color = ['b', 'r', 'g', 'y', 'w', 'b', 'p']
         ax = plt.subplot(111, projection='3d')
         for categ_index in range(len(category)):
             tuple_seg = tuple[seg_label == category[categ_index]]
@@ -251,3 +265,57 @@ def convert2new(npm_labels, semantic_labels):
     npm_labels = np.reshape(npm_labels, npm_shape)
     semantic_labels = np.reshape(semantic_labels, npm_shape)
     return npm_labels, semantic_labels
+
+
+def semantic2common(semantic_labels):
+    """
+    convert semantic label to common class. We set common classes by 0: unlabeled, 1: ground,
+    2: nature, 3: building, 4: hardscape 5: cars
+    :param semantic_labels: (N,) semantic  labels availabel by model
+    :return: (n,), (n,)
+    """
+    semantic2new = {0: 0, 1: 1, 2: 2, 3: 2, 4: 2, 5: 3, 6: 4, 7: 0, 8: 5}
+    semantic_shape = semantic_labels.shape
+    semantic_labels = semantic_labels.flatten()
+    N = len(semantic_labels)
+    for i in range(N):
+        semantic_labels[i] = semantic2new[semantic_labels[i]]
+    semantic_labels = np.reshape(semantic_labels, semantic_shape)
+    return semantic_labels
+
+
+def npm2common(npm_labels):
+    """
+    convert semantic label to common class. We set common classes by 0: unlabeled, 1: ground,
+    2: nature, 3: building, 4: hardscape 5: cars
+    :param npm_labels: (N,) npm  labels available by dataset
+    :return: (n,), (n,)
+    """
+    npm2new = {0: 0, 1: 1, 2: 3, 3: 4, 4: 4, 5: 4, 6: 4, 7: 0, 8: 5, 9: 2}
+    npm_shape = npm_labels.shape
+    npm_labels = npm_labels.flatten()
+    N = len(npm_labels)
+    for i in range(N):
+        npm_labels[i] = npm2new[npm_labels[i]]
+    npm_labels = np.reshape(npm_labels, npm_shape)
+    return npm_labels
+
+
+def _2common(labels, dataset_name):
+    if dataset_name == 'semantic':
+        return semantic2common(labels)
+    elif dataset_name == 'npm':
+        return npm2common(labels)
+    else:
+        raise ValueError("can't not recognize dataset name %s" % dataset_name)
+
+
+if __name__ == '__main__':
+    pcd_path = '../Lille2.pcd'
+    label_path = '../Lille2.labels'
+    pcd_file = open3d.io.read_point_cloud(pcd_path)
+    cloud = np.asarray(pcd_file.points, dtype=np.float32)
+    # label = np.loadtxt(label_path, dtype=np.int64)
+    show_point_cloud(cloud)
+
+    print('done')
