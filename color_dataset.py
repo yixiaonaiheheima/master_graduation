@@ -14,8 +14,8 @@ from utils.point_cloud_util import _label_to_colors
 import glob
 
 
-ori_folder = '/home/yss/sda1/yzl/Data/npm_downsampled'
-dest_folder = '/home/yss/sda1/yzl/Data/npm_downsampled_colored'
+ori_folder = '/home/yss/sda1/yzl/Data/semantic_downsampled'
+dest_folder = '/home/yss/sda1/yzl/Data/semantic_downsampled_colored'
 os.makedirs(dest_folder, exist_ok=True)
 for label_path in glob.glob(os.path.join(ori_folder, '*.labels')):
     labels = np.loadtxt(label_path, dtype=np.int64)

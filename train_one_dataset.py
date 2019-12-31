@@ -49,7 +49,7 @@ parser.add_argument('--augmentation', type=str, nargs='+', default=['Jitter', 'S
                     help='Data augmentation settings to use during training')
 parser.add_argument('--upright_axis', type=int, default=2,
                     help='Will learn invariance along this axis')
-parser.add_argument('--resume_model', type=str, default='/home/yss/sda1/yzl/yzl_graduation/train_log/pointcnn_semantic1230/checkpoint_epoch5_acc0.85.tar',
+parser.add_argument('--resume_model', type=str, default='',
                     help='If present, restore checkpoint and resume training')
 parser.add_argument("--seg", type=float, default=1.0,
                     help="Smooth term for position")

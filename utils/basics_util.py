@@ -396,11 +396,12 @@ def compute_geometry_feature(cloud):
     cloud = cloud[:, :3]
     N = cloud.shape[0]
     tree = KDTree(cloud)
-    neighborhoods_radius = tree.query_radius(cloud, r=0.75)
+    # neighborhoods_radius = tree.query_radius(cloud, r=0.75)
     k = min(N, 20)
     _, neighborhoods_fixed = tree.query(cloud, k=k)
-    neighborhoods = [neighborhoods_radius[idx] if len(neighborhoods_radius[idx]) >= len(neighborhoods_fixed[idx])
-                     else neighborhoods_fixed[idx] for idx in range(N)]
+    # neighborhoods = [neighborhoods_radius[idx] if len(neighborhoods_radius[idx]) >= len(neighborhoods_fixed[idx])
+    #                  else neighborhoods_fixed[idx] for idx in range(N)]
+    neighborhoods = [neighborhoods_fixed[idx] for idx in range(N)]
     cov = np.array([get_cov(cloud[neighborhood]) for neighborhood in neighborhoods])  # (N, 3, 3)
     eigen_values, eigen_vectors = np.linalg.eigh(cov)  # (N, 3), (N, 3, 3)
     # eigen values is automatically in ascending order i.e. lambda3 <= lambda2 <= lambda1

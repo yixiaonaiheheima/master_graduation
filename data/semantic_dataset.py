@@ -211,6 +211,11 @@ class SemanticFileData:
 
         for _ in range(batch_size):
             points_centered, points_raw, gt_labels, colors, geometry = self.sample(num_points_per_sample)
+            geometry = geometry[:, 1:2]  # (N, 1)
+            geometry_mean = np.mean(geometry, 0, keepdims=True)  # (1, 1)
+            geometry = geometry - geometry_mean
+            geometry_std = np.std(geometry, axis=0, keepdims=True)  # (1, 1)
+            geometry = geometry / geometry_std  # (N, 1)
             batch_points_centered.append(points_centered)
             batch_points_raw.append(points_raw)
             batch_labels.append(gt_labels)
@@ -218,11 +223,11 @@ class SemanticFileData:
             batch_geometry.append(geometry)
 
         return (
-            np.array(batch_points_centered),
-            np.array(batch_points_raw),
-            np.array(batch_labels),
-            np.array(batch_colors),
-            np.array(batch_geometry)
+            np.array(batch_points_centered),  # (B, N, 3)
+            np.array(batch_points_raw),  # (B, N, 3)
+            np.array(batch_labels),  # (B, N)
+            np.array(batch_colors),  # (B, N, 3)
+            np.array(batch_geometry)  # (B, N, 1)
         )
 
 
