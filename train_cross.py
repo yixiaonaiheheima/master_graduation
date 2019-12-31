@@ -345,6 +345,7 @@ def eval_one_epoch(stack, model, criterion, device, val_writer):
 
 
 def train():
+    global EPOCH_CNT
     os.makedirs(os.path.join(root_folder, SUMMARY_LOG_DIR), exist_ok=True)
     train_writer = SummaryWriter(os.path.join(root_folder, SUMMARY_LOG_DIR, 'train'))
     val_writer = SummaryWriter(os.path.join(root_folder, SUMMARY_LOG_DIR, 'val'))
@@ -379,7 +380,7 @@ def train():
         scheduler.load_state_dict(checkpoint['scheduler'])
     else:
         start_epoch = 0
-
+    EPOCH_CNT = start_epoch
     LOG_FOUT.write("\n")
     LOG_FOUT.flush()
     parameter_num = np.sum([np.prod(list(v.shape)) for v in model.parameters()])

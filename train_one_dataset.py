@@ -49,7 +49,7 @@ parser.add_argument('--augmentation', type=str, nargs='+', default=['Jitter', 'S
                     help='Data augmentation settings to use during training')
 parser.add_argument('--upright_axis', type=int, default=2,
                     help='Will learn invariance along this axis')
-parser.add_argument('--resume_model', type=str, default='',
+parser.add_argument('--resume_model', type=str, default='/home/yss/sda1/yzl/yzl_graduation/train_log/pointcnn_semantic1230/checkpoint_epoch5_acc0.85.tar',
                     help='If present, restore checkpoint and resume training')
 parser.add_argument("--seg", type=float, default=1.0,
                     help="Smooth term for position")
@@ -357,6 +357,7 @@ def eval_one_epoch(stack, model, criterion, device, val_writer):
 
 
 def train():
+    global EPOCH_CNT
     os.makedirs(os.path.join(root_folder, SUMMARY_LOG_DIR), exist_ok=True)
     train_writer = SummaryWriter(os.path.join(root_folder, SUMMARY_LOG_DIR, 'train'))
     val_writer = SummaryWriter(os.path.join(root_folder, SUMMARY_LOG_DIR, 'val'))
@@ -382,7 +383,7 @@ def train():
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, LR_DECAY_STEP, gamma=LR_DECAY_RATE)
 
     if len(RESUME_MODEL) > 0:
-        resume_path = os.path.join(root_folder, RESUME_MODEL)
+        resume_path = RESUME_MODEL
         print("Resuming From ", resume_path)
         checkpoint = torch.load(resume_path)
         saved_state_dict = checkpoint['state_dict']
@@ -392,6 +393,7 @@ def train():
     else:
         start_epoch = 0
 
+    EPOCH_CNT = start_epoch
     LOG_FOUT.write("\n")
     LOG_FOUT.flush()
     parameter_num = np.sum([np.prod(list(v.shape)) for v in model.parameters()])

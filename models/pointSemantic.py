@@ -111,10 +111,11 @@ class PointSemantic(nn.Module):
         self.drop1 = nn.Dropout(0.5)
         self.conv2 = nn.Conv1d(128, num_classes, 1)
 
-    def forward(self, pc):
+    def forward(self, pc, return_embed=False):
         """
 
         :param pc: tensor(b, N, 3+f)
+        :param return_embed: bool, return embedding for visualization
         :return:
         """
         # input point cloud
@@ -142,7 +143,10 @@ class PointSemantic(nn.Module):
         semantic3d_prob = F.log_softmax(semantic3d_points, dim=1)  # (b, num_classes, N)
         semantic3d_prob = semantic3d_prob.permute(0, 2, 1)  # (b, N, num_classes)
 
-        return semantic3d_prob
+        if return_embed:
+            return semantic3d_prob, l0_points1.permute(0, 2, 1)
+        else:
+            return semantic3d_prob
 
 
 if __name__ == '__main__':

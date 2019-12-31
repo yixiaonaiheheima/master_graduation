@@ -24,7 +24,7 @@ from datetime import datetime
 from utils import metric
 
 
-def run_model(model, input_tensor, params, model_name, another_input=None):
+def run_model(model, input_tensor, params, model_name, another_input=None, return_embed=False):
     """
 
     :param model:
@@ -43,7 +43,7 @@ def run_model(model, input_tensor, params, model_name, another_input=None):
     elif model_name == 'pointcnn':
         res = model(points, features)
     elif model_name == 'pointsemantic':
-        res = model(input_tensor)
+        return model(input_tensor, return_embed)
     elif model_name == 'pointsemantic_cross':
         res = model(input_tensor, another_input)
     else:
