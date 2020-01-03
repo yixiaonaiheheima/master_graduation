@@ -59,10 +59,15 @@ class NpmFileData:
             h5_path = file_path_without_ext + '.h5'
             assert(os.path.exists(h5_path))
             h5_file = h5py.File(h5_path, 'r')
-            self.geometry = h5_file['geometry_features'][...]
+            geometry = h5_file['geometry_features'][...]
+            geometry_mean = np.mean(geometry, 0, keepdims=True)  # (1, 7)
+            geometry = geometry - geometry_mean
+            geometry_std = np.std(geometry, axis=0, keepdims=True)  # (1, 7)
+            self.geometry = geometry / geometry_std  # (N, 7)
         else:
             self.geometry = np.zeros((self.points.shape[0], 7), dtype=np.float32)
 
+        # self.geometry = self.geometry[:, 2:3]  # (N, 1)
         # Sort according to x to speed up computation of boxes and z-boxes
         sort_idx = np.argsort(self.points[:, 0])
         self.points = self.points[sort_idx]

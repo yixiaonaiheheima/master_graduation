@@ -94,6 +94,7 @@ class PointSemantic(nn.Module):
         if with_rgb:
             self.feature_channel += 3
 
+        print("feature channel is %d" % self.feature_channel)
         # Encoder
         # we discard the default setting radius [0.5,1.0,2.0,4.0] as we don't normalize point cloud before network
         self.sa1 = PNSADenseNet(1024, 0.5, 32, [2 * (self.feature_channel + 3), 64, 64], False, False)

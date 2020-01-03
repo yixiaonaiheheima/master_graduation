@@ -64,6 +64,7 @@ parser.add_argument('--use_normals', action='store_true')
 parser.add_argument("--train_set", default="train", help="train, train_full")
 parser.add_argument("--config_file", default="semantic.json", help="config file path")
 parser.add_argument("--dataset_name", default="semantic", help="npm, semantic")
+parser.add_argument('--weight_decay', default=1e-4, help="decay rate, default=1e-4")
 args = parser.parse_args()
 
 GPU_ID = args.gpu_id
@@ -83,6 +84,7 @@ LOG = args.log
 NUM_POINT = args.num_point
 USE_NORMALS = args.use_normals
 DATASET_NAME = args.dataset_name
+WEIGHT_DECAY = args.weight_decay
 
 train_augmentations = get_augmentations_from_list(TRAIN_AUGMENTATION)
 
@@ -373,9 +375,9 @@ def train():
     criterion = criterion.to(device)
 
     if MODEL_OPTIMIZER == 'momentum':
-        optimizer = torch.optim.SGD(model.parameters(), INIT_LEARNING_RATE)
+        optimizer = torch.optim.SGD(model.parameters(), INIT_LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     elif MODEL_OPTIMIZER == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), INIT_LEARNING_RATE)
+        optimizer = torch.optim.Adam(model.parameters(), INIT_LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     else:
         optimizer = None
         exit(0)
@@ -433,6 +435,7 @@ def train():
                     'scheduler': scheduler.state_dict(),
                 }, save_path)
                 log_string("Model saved in file: %s" % save_path)
+
                 print("Model saved in file: %s" % save_path)
 
     # Kill the process, close the file and exit

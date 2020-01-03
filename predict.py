@@ -17,8 +17,8 @@ from tensorboardX import SummaryWriter
 # Parser
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu_id', type=int, default=1, help='gpu id for network')
-parser.add_argument("--num_samples", type=int, default=1000, help="# samples, each contains num_point points_centered")
-parser.add_argument("--resume_model", default="/home/yss/sda1/yzl/yzl_graduation/train_log/pointsemantic_npm_row2/checkpoint_epoch60_acc0.96.tar", help="restore checkpoint file storing model parameters")
+parser.add_argument("--num_samples", type=int, default=500, help="# samples, each contains num_point points_centered")
+parser.add_argument("--resume_model", default="/home/yss/sda1/yzl/yzl_graduation/train_log/pointnet_npm_row6/checkpoint_epoch100_acc0.89.tar", help="restore checkpoint file storing model parameters")
 parser.add_argument("--config_file", default="semantic.json",
                     help="config file path, it should same with that during traing")
 parser.add_argument("--set", default="validation", help="train, validation, test")
@@ -128,18 +128,23 @@ if __name__ == "__main__":
             s = time.time()
             input_tensor = torch.from_numpy(point_cloud).to(device, dtype=torch.float32)  # (current_batch_size, N, 3)
             with torch.no_grad():
-                pd_prob, embedding = run_model(model, input_tensor, hyper_params, flags.model_name, return_embed=True)  # (current_batch_size, N)
+                res = run_model(model, input_tensor, hyper_params, flags.model_name, return_embed=True)  # (current_batch_size, N)
+            if flags.model_name == 'pointsemantic':
+                pd_prob, embedding = res
+            else:
+                pd_prob = res
             _, pd_labels = torch.max(pd_prob, dim=2)  # (B, N)
             pd_prob = pd_prob.cpu().numpy()
             pd_labels = pd_labels.cpu().numpy()
-            embedding = embedding.cpu().numpy()
-            reshaped_embedding = np.reshape(embedding, (flags.batch_size*flags.num_point, -1))
-            if global_step < 5:
-                writer.add_embedding(
-                    reshaped_embedding,
-                    metadata=gt_labels.flatten(),
-                    global_step=global_step
-                )
+            if flags.model_name == 'pointsemantic':
+                embedding = embedding.cpu().numpy()
+                reshaped_embedding = np.reshape(embedding, (flags.batch_size*flags.num_point, -1))
+                if global_step < 5:
+                    writer.add_embedding(
+                        reshaped_embedding,
+                        metadata=gt_labels.flatten(),
+                        global_step=global_step
+                    )
             print("Batch size: {}, time: {}".format(current_batch_size, time.time() - s))
 
             common_gt = _2common(gt_labels, flags.to_dataset)  # (B, N)

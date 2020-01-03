@@ -1,6 +1,6 @@
 {
     "data_path": "/home/yss/sda1/yzl/Data/semantic_downsampled",
-    "use_geometry": 0,
+    "use_geometry": 1,
     "use_color": 1,
     "box_size_x": 10,
     "box_size_y": 10
