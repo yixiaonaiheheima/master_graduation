@@ -7,6 +7,22 @@ from utils.basics_util import square_distance, index_points, sample_and_group, s
     make_box, make_sphere, make_cylinder
 
 
+class Attention(nn.Module):
+    def __init__(self, in_channel):
+        super(Attention, self).__init__()
+        self.gamma = nn.Parameter(torch.zeros(1))
+        self.normal_conv = nn.Conv2d(in_channel, 1, 1)
+
+    def forward(self, points):
+        attention = F.softplus(self.normal_conv(points), -1)  # [B, 1, N]
+        # attention = torch.sigmoid(self.conv1(points.permute(0, 2, 1)))
+        attention = F.normalize(attention, p=2, dim=-1)  # [B, N]
+        points_weight = torch.mul(points, attention)  # [B, N, C] * [B, N, 1]
+        points_attention = torch.add(points, points_weight)  # [B, N, C]
+
+        return points_attention
+    
+
 class GraphAttention(nn.Module):
     def __init__(self, all_channel, feature_dim, dropout, alpha):
         super(GraphAttention, self).__init__()
@@ -88,7 +104,7 @@ class DualAttention(nn.Module):
 
 
 class DenseNet1D(nn.Module):
-    def __init__(self, channel_list, seblock=False):
+    def __init__(self, channel_list, seblock=True):
         """
         Input:
             channel_list: a list for input, middle and output data dimension
@@ -140,7 +156,7 @@ class DenseNet1D(nn.Module):
 
 
 class DenseNet2D(nn.Module):
-    def __init__(self, channel_list, seblock=False):
+    def __init__(self, channel_list, seblock=True):
         """
         Input:
             channel_list: a list for input, middle and output data dimension
@@ -212,9 +228,9 @@ class PNSADenseNet(nn.Module):
         self.nsample = nsample
         self.group_all = group_all
         self.normalize_radius = normalize_radius
-        self.pnsadensesnet = DenseNet2D(channel_list, seblock=False)
+        self.pnsadensesnet = DenseNet2D(channel_list, seblock=True)
         last_channel = channel_list[-1]
-        self.DAT = DualAttention(last_channel)
+        self.DAT = Attention(last_channel)
 
     def forward(self, xyz, points):
         """
@@ -235,13 +251,13 @@ class PNSADenseNet(nn.Module):
         new_points = new_points.permute(0, 3, 2, 1)  # [B, C+D, nsample, npoint]
         fps_points = fps_points.unsqueeze(3).permute(0, 2, 3, 1)  # [B, C+D, 1,npoint]
         new_points_graph = new_points - fps_points  # [B, C+D, nsample,npoint]
+        # new_points_graph = self.DAT(new_points_graph)  # [B, C, nsample,npoint]
         new_points_input = torch.cat([new_points_graph, new_points], dim=1)  # [B, 2*(C+D), nsample, npoint]
         new_points_dense = self.pnsadensesnet(new_points_input)  # [B, D', nsample, npoint]
         new_points_dense = torch.max(new_points_dense, 2)[0]  # [B, D', npoint]
         new_points_dense = new_points_dense.permute(0, 2, 1)  # [B, npoint, D']
-        new_points_dense_dual = self.DAT(new_points_dense)  # [B, npoint, D']
 
-        return new_xyz, new_points_dense_dual
+        return new_xyz, new_points_dense
 
 
 class PNFPDenseNet(nn.Module):
@@ -251,7 +267,7 @@ class PNFPDenseNet(nn.Module):
             channel_list: a list for input, middle and output data dimension
         """
         super(PNFPDenseNet, self).__init__()
-        self.pnfpdensesnet = DenseNet1D(channel_list, seblock=False)
+        self.pnfpdensesnet = DenseNet1D(channel_list, seblock=True)
 
     def forward(self, xyz1, xyz2, points1, points2):
         """
