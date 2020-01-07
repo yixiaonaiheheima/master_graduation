@@ -22,9 +22,34 @@ def func1():
 # pcd_file = open3d.io.read_point_cloud(pcd_path)
 # color = np.asarray(pcd_file.colors)
 #
-folder = '/home/yss/sda1/yzl/yzl_graduation/result/sparse/pointnet2_semantic2npm'
-txt_fname = 'Lille1_2.prob'
-txt_path = os.path.join(folder, txt_fname)
-scan = np.genfromtxt(txt_path, delimiter=' ', max_rows=10)
+# !/usr/bin/env python3
+from functools import partial
+from itertools import repeat
+from multiprocessing import Pool, freeze_support
 
-print('done')
+
+def func(a, b):
+    return a + b
+
+
+def main():
+    a_args = [1, 2, 3]
+    second_arg = 1
+    with Pool() as pool:
+        L = pool.starmap(func, [(1, 1), (2, 1), (3, 1)])
+        M = pool.starmap(func, zip(a_args, repeat(second_arg)))
+        N = pool.map(partial(func, b=second_arg), a_args)
+        assert L == M == N
+
+
+folder = '/home/yss/sda1/yzl/Data/npm_downsampled'
+pcd_name = 'ajaccio_57.pcd'
+pcd_path = os.path.join(folder, pcd_name)
+pcd_file = open3d.io.read_point_cloud(pcd_path)
+open3d.geometry.PointCloud.estimate_normals(pcd_file)
+normal = np.asarray(pcd_file.normals)
+
+if __name__ == "__main__":
+    # freeze_support()
+    # main()
+    print('done')

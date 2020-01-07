@@ -18,7 +18,7 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu_id', type=int, default=1, help='gpu id for network')
 parser.add_argument("--num_samples", type=int, default=500, help="# samples, each contains num_point points_centered")
-parser.add_argument("--resume_model", default="/home/yss/sda1/yzl/yzl_graduation/train_log/pointnet_npm_row6/checkpoint_epoch100_acc0.89.tar", help="restore checkpoint file storing model parameters")
+parser.add_argument("--resume_model", default="/home/yss/sda1/yzl/yzl_graduation/train_log/pointsemantic_semantic_row15/checkpoint_epoch80_acc0.92.tar", help="restore checkpoint file storing model parameters")
 parser.add_argument("--config_file", default="semantic.json",
                     help="config file path, it should same with that during traing")
 parser.add_argument("--set", default="validation", help="train, validation, test")
@@ -28,8 +28,9 @@ parser.add_argument('--batch_size', type=int, default=16,
                     help='Batch Size for prediction [default: 32]')
 parser.add_argument('--from_dataset', default='semantic', help='which dataset the model is trained from')
 parser.add_argument('--to_dataset', default='semantic', help='which dataset to predict')
+parser.add_argument('--embedding', default=False, action='store_true')
 flags = parser.parse_args()
-
+print(flags)
 
 if __name__ == "__main__":
     np.random.seed(0)
@@ -131,12 +132,14 @@ if __name__ == "__main__":
                 res = run_model(model, input_tensor, hyper_params, flags.model_name, return_embed=True)  # (current_batch_size, N)
             if flags.model_name == 'pointsemantic':
                 pd_prob, embedding = res
+            elif flags.model_name == 'pointsemantic_cross':
+                pd_prob, reconstructio = res
             else:
                 pd_prob = res
             _, pd_labels = torch.max(pd_prob, dim=2)  # (B, N)
             pd_prob = pd_prob.cpu().numpy()
             pd_labels = pd_labels.cpu().numpy()
-            if flags.model_name == 'pointsemantic':
+            if flags.model_name == 'pointsemantic' and flags.embedding:
                 embedding = embedding.cpu().numpy()
                 reshaped_embedding = np.reshape(embedding, (flags.batch_size*flags.num_point, -1))
                 if global_step < 5:

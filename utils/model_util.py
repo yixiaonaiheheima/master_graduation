@@ -11,8 +11,10 @@ from data.augment import get_augmentations_from_list
 from models.pointnet import PointNetDenseCls
 from models.loss import PointnetCriterion,Criterion_cross
 from models.pointnet2 import PointNet2Seg
-from models.pointSemantic import PointSemantic, PointSemantic_cross
+from models.pointSemantic import PointSemantic
+from models.pointsemantic_cross import PointSemantic_cross
 from pointcnn_utils.pointcnn import PointCNN_seg
+from models.convPoint import SegBig
 from tensorboardX import SummaryWriter
 from torch.backends import cudnn
 import json
@@ -45,7 +47,15 @@ def run_model(model, input_tensor, params, model_name, another_input=None, retur
     elif model_name == 'pointsemantic':
         return model(input_tensor, return_embed)
     elif model_name == 'pointsemantic_cross':
+        if another_input is None:
+            another_input = input_tensor
         res = model(input_tensor, another_input)
+    elif model_name == 'convpoint':
+        if not params['use_color'] and not params['use_geometry']:
+            conv_features = torch.ones((points.shape[0], points.shape[1], 1))
+        else:
+            conv_features = features
+        res = model(conv_features, points)
     else:
         raise ValueError
     return res
@@ -56,17 +66,18 @@ def select_model(model_name, num_classes, params, weights=None):
         model = PointNetDenseCls(num_classes)
         criterion = PointnetCriterion(weights=weights)
     elif model_name == 'pointnet2':
-        if params['use_color']:
-            model = PointNet2Seg(num_classes, with_rgb=params['use_color'])
+        if params['use_geometry']:
+            addition_channel = 3
         else:
-            model = PointNet2Seg(num_classes)
+            addition_channel = 0
+        model = PointNet2Seg(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)
         criterion = PointnetCriterion(weights=weights)
     elif model_name == 'pointcnn':
         model = PointCNN_seg(num_classes)
         criterion = PointnetCriterion(weights=weights)
     elif model_name == 'pointsemantic':
         if params['use_geometry']:
-            addition_channel = 7
+            addition_channel = 3
         else:
             addition_channel = 0
         model = PointSemantic(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)
@@ -77,6 +88,16 @@ def select_model(model_name, num_classes, params, weights=None):
         else:
             addition_channel = 0
         model = PointSemantic_cross(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)
+        criterion = Criterion_cross(weights=weights)
+    elif model_name == 'convpoint':
+        input_channels = 0
+        if params['use_geometry']:
+            input_channels += 3
+        if params['use_color']:
+            input_channels += 3
+        if input_channels < 1:
+            input_channels = 1
+        model = SegBig(input_channels, num_classes, dimension=3, args={'drop': 0.5})
         criterion = Criterion_cross(weights=weights)
     else:
         raise ValueError

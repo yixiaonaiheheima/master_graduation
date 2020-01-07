@@ -55,19 +55,22 @@ class NpmFileData:
             self.labels = np.zeros(len(self.points)).astype(bool)
 
         # load geometry features. If not use_geometr, fill with zeros
+        # TODO: attention for h5_path name!!!!
         if use_geometry:
-            h5_path = file_path_without_ext + '.h5'
+            h5_path = file_path_without_ext + '_open3d.h5'
             assert(os.path.exists(h5_path))
             h5_file = h5py.File(h5_path, 'r')
-            geometry = h5_file['geometry_features'][...]
-            geometry_mean = np.mean(geometry, 0, keepdims=True)  # (1, 7)
-            geometry = geometry - geometry_mean
-            geometry_std = np.std(geometry, axis=0, keepdims=True)  # (1, 7)
-            self.geometry = geometry / geometry_std  # (N, 7)
+            # geometry = h5_file['geometry_features'][...]
+            # geometry_mean = np.mean(geometry, 0, keepdims=True)  # (1, 7)
+            # geometry = geometry - geometry_mean
+            # geometry_std = np.std(geometry, axis=0, keepdims=True)  # (1, 7)
+            # self.geometry = geometry / geometry_std  # (N, 7)
+            self.geometry = h5_file['normals'][...]
         else:
-            self.geometry = np.zeros((self.points.shape[0], 7), dtype=np.float32)
+            raise ValueError("geometry is not available")
+            # self.geometry = np.zeros((self.points.shape[0], 7), dtype=np.float32)
 
-        # self.geometry = self.geometry[:, 2:3]  # (N, 1)
+        # self.geometry = self.geometry[:, 4:5]  # (N, 1)
         # Sort according to x to speed up computation of boxes and z-boxes
         sort_idx = np.argsort(self.points[:, 0])
         self.points = self.points[sort_idx]

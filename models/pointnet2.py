@@ -4,14 +4,14 @@ from utils.pointnet2_util import PointNetSetAbstraction, PointNetFeaturePropagat
 
 
 class PointNet2Seg(nn.Module):
-    def __init__(self, num_classes, with_rgb=False):
+    def __init__(self, num_classes, with_rgb=False, addition_channel=0):
         super(PointNet2Seg, self).__init__()
         self.with_rgb = with_rgb
+        self.feature_channel = addition_channel
         if with_rgb:
-            additional_channel = 3
-        else:
-            additional_channel = 0
-        self.sa1 = PointNetSetAbstraction(1024, 0.5, 32, 3 + additional_channel, [32, 32, 64], False)
+            self.feature_channel += 3
+        print("feature channel for pointnet2 is %d" % self.feature_channel)
+        self.sa1 = PointNetSetAbstraction(1024, 0.5, 32, 3 + self.feature_channel, [32, 32, 64], False)
         self.sa2 = PointNetSetAbstraction(256, 1.0, 32, 64 + 3, [64, 64, 128], False)
         self.sa3 = PointNetSetAbstraction(64, 2.0, 32, 128 + 3, [128, 128, 256], False)
         self.sa4 = PointNetSetAbstraction(16, 4.0, 32, 256 + 3, [256, 256, 512], False)
@@ -32,7 +32,7 @@ class PointNet2Seg(nn.Module):
          x: tensor(b, N, num_classes)
          l4_points: tensor(b, 512, 16)
         """
-        if self.with_rgb:
+        if self.feature_channel != 0:
             l0_points = xyz[:, 3:, :]  # (b, 3, N)
             l0_xyz = xyz[:, :3, :]  # (b, 3, N)
         else:
