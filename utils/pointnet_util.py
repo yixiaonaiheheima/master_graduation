@@ -245,7 +245,7 @@ class PNSADenseNet(nn.Module):
 
 
 class PNFPDenseNet(nn.Module):
-    def  __init__(self, channel_list):
+    def __init__(self, channel_list):
         """
         Input:
             channel_list: a list for input, middle and output data dimension
