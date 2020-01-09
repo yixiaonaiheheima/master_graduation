@@ -17,8 +17,8 @@ from tensorboardX import SummaryWriter
 # Parser
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu_id', type=int, default=1, help='gpu id for network')
-parser.add_argument("--num_samples", type=int, default=500, help="# samples, each contains num_point points_centered")
-parser.add_argument("--resume_model", default="/home/yss/sda1/yzl/yzl_graduation/train_log/pointsemantic_semantic_row15/checkpoint_epoch80_acc0.92.tar", help="restore checkpoint file storing model parameters")
+parser.add_argument("--num_samples", type=int, default=32, help="# samples, each contains num_point points_centered")
+parser.add_argument("--resume_model", default="/home/yss/sda1/yss/YZL/yzl_graduation_20191231/train_log/pointsemantic_cross_semantic_plus_npm1/checkpoint_epoch70_acc0.85.tar", help="restore checkpoint file storing model parameters")
 parser.add_argument("--config_file", default="semantic.json",
                     help="config file path, it should same with that during traing")
 parser.add_argument("--set", default="validation", help="train, validation, test")

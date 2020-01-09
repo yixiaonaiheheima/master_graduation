@@ -19,13 +19,14 @@ for file in file_list:
     if not os.path.exists(pcd_path):
         print("%s not exists!" % pcd_fname)
         continue
-    h5_fname = file + '.h5'
+    h5_fname = file + '_v3.h5'
     h5_path = os.path.join(root_folder, h5_fname)
     if os.path.exists(h5_path):
         print("%s already exists, skipping..." % h5_fname)
         continue
     pcd_file = open3d.io.read_point_cloud(pcd_path)
     cloud = np.asarray(pcd_file.points)
+
     print("compute geometry feature for %s" % file)
     geo_feature, normals = compute_geometry_feature(cloud)
 

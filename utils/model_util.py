@@ -52,7 +52,7 @@ def run_model(model, input_tensor, params, model_name, another_input=None, retur
         res = model(input_tensor, another_input)
     elif model_name == 'convpoint':
         if not params['use_color'] and not params['use_geometry']:
-            conv_features = torch.ones((points.shape[0], points.shape[1], 1))
+            conv_features = torch.ones((points.shape[0], points.shape[1], 1)).to(points.device)
         else:
             conv_features = features
         res = model(conv_features, points)
@@ -77,7 +77,7 @@ def select_model(model_name, num_classes, params, weights=None):
         criterion = PointnetCriterion(weights=weights)
     elif model_name == 'pointsemantic':
         if params['use_geometry']:
-            addition_channel = 3
+            addition_channel = 7
         else:
             addition_channel = 0
         model = PointSemantic(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)
@@ -92,13 +92,13 @@ def select_model(model_name, num_classes, params, weights=None):
     elif model_name == 'convpoint':
         input_channels = 0
         if params['use_geometry']:
-            input_channels += 3
+            input_channels += 7
         if params['use_color']:
             input_channels += 3
         if input_channels < 1:
             input_channels = 1
         model = SegBig(input_channels, num_classes, dimension=3, args={'drop': 0.5})
-        criterion = Criterion_cross(weights=weights)
+        criterion = PointnetCriterion(weights=weights)
     else:
         raise ValueError
 

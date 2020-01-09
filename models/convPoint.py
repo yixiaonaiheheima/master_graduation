@@ -148,7 +148,7 @@ class SegBig(nn.Module):
 
         if "drop" in args:
             print("Model with dropout")
-            self.drop = nn.Dropout(args.drop)
+            self.drop = nn.Dropout(args['drop'])
         else:
             self.drop = nn.Dropout(0.0)
 
@@ -215,9 +215,8 @@ class SegBig(nn.Module):
         xout = self.drop(xout)
         xout = xout.view(-1, xout.size(2))
         xout = self.fcout(xout)  # (B*N, output_channels)
-        xout = xout.view(x.size(0), -1, xout.size(1))  # (B, output_channels, N)
-        xout = F.log_softmax(xout, dim=1)  # (B, output_channels, N)
-        xout = xout.permute(0, 2, 1)  # (B, N, output_channels)
+        xout = xout.view(x.size(0), -1, xout.size(1))  # (B, N, output_channels)
+        xout = F.log_softmax(xout, dim=-1)  # (B, N, output_channels)
 
         if return_features:
             return xout, x0d

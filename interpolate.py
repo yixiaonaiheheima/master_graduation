@@ -16,10 +16,10 @@ to_dataset = 'npm'
 root_folder = '/home/yss/sda1/yzl/yzl_graduation/result'
 sub_folder = model_name + '_' + from_dataset + '2' + to_dataset
 sparse_folder = os.path.join(root_folder, 'sparse', sub_folder)
-# raw_folder = '/home/yss/sda1/yzl/Data/' + to_dataset + '_raw'
-# dense_folder = os.path.join(root_folder, 'dense', sub_folder)
-raw_folder = '/home/yss/sda1/yzl/Data/' + to_dataset + '_downsampled'
-dense_folder = os.path.join(root_folder, 'downsampled', sub_folder)
+raw_folder = '/home/yss/sda1/yzl/Data/' + to_dataset + '_raw'
+dense_folder = os.path.join(root_folder, 'dense', sub_folder)
+# raw_folder = '/home/yss/sda1/yzl/Data/' + to_dataset + '_downsampled'
+# dense_folder = os.path.join(root_folder, 'downsampled', sub_folder)
 os.makedirs(dense_folder, exist_ok=True)
 for prob_path in glob.glob(os.path.join(sparse_folder, '*.prob')):
     base_name = os.path.basename(prob_path)

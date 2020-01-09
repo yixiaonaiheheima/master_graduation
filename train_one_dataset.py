@@ -355,7 +355,7 @@ def eval_one_epoch(stack, model, criterion, device, val_writer):
             "IoU of %s : %f" % (VALIDATION_DATASET.labels_names[i], iou_per_class[i])
         )
 
-    return confusion_matrix.get_accuracy()
+    return confusion_matrix.get_mean_iou()
 
 
 def train():
@@ -403,7 +403,7 @@ def train():
 
     # start training
     stacker, stack_validation, stack_train = init_stacking()
-    best_acc = 0
+    best_mIoU = 0
     for epoch in range(start_epoch, MAX_EPOCH):
         print("in epoch", epoch)
         print("max_epoch", MAX_EPOCH)
@@ -415,10 +415,10 @@ def train():
         train_one_epoch(stack_train, scheduler, model, criterion, device, train_writer)
         # Evaluate, save, and compute the accuracy
         if epoch % 5 == 0:
-            acc = eval_one_epoch(stack_validation, model, criterion, device, val_writer)
-            save_path = os.path.join(root_folder, 'checkpoint_epoch%d_acc%.2f.tar' % (epoch, acc))
-            if acc > best_acc:
-                best_acc = acc
+            mIoU = eval_one_epoch(stack_validation, model, criterion, device, val_writer)
+            save_path = os.path.join(root_folder, 'checkpoint_epoch%d_iou%.2f.tar' % (epoch, mIoU))
+            if mIoU > best_mIoU:
+                best_mIoU = mIoU
                 torch.save({
                     'epoch': epoch + 1,
                     'state_dict': model.state_dict(),
