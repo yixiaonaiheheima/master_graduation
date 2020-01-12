@@ -15,6 +15,7 @@ from models.pointSemantic import PointSemantic
 from models.pointsemantic_cross import PointSemantic_cross
 from pointcnn_utils.pointcnn import PointCNN_seg
 from models.convPoint import SegBig
+from models.dgcnn import DGCNN_seg
 from tensorboardX import SummaryWriter
 from torch.backends import cudnn
 import json
@@ -56,8 +57,10 @@ def run_model(model, input_tensor, params, model_name, another_input=None, retur
         else:
             conv_features = features
         res = model(conv_features, points)
+    elif model_name == 'dgcnn':
+        res = model(input_tensor.permute(0, 2, 1))
     else:
-        raise ValueError
+        raise ValueError("model %s is not implemented!" % model_name)
     return res
 
 
@@ -72,12 +75,19 @@ def select_model(model_name, num_classes, params, weights=None):
             addition_channel = 0
         model = PointNet2Seg(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)
         criterion = PointnetCriterion(weights=weights)
+    elif model_name == 'dgcnn':
+        if params['use_geometry']:
+            addition_channel = 3
+        else:
+            addition_channel = 0
+        model = DGCNN_seg(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)
+        criterion = PointnetCriterion(weights=weights)
     elif model_name == 'pointcnn':
         model = PointCNN_seg(num_classes)
         criterion = PointnetCriterion(weights=weights)
     elif model_name == 'pointsemantic':
         if params['use_geometry']:
-            addition_channel = 7
+            addition_channel = 1
         else:
             addition_channel = 0
         model = PointSemantic(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)

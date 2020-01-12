@@ -65,7 +65,7 @@ class NpmFileData:
         else:
             self.geometry = np.zeros((self.points.shape[0], 7), dtype=np.float32)
 
-        # self.geometry = self.geometry[:, 4:5]  # (N, 1)
+        self.geometry = self.geometry[:, 1:2]  # (N, 1)
         # Sort according to x to speed up computation of boxes and z-boxes
         sort_idx = np.argsort(self.points[:, 0])
         self.points = self.points[sort_idx]
