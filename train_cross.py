@@ -27,8 +27,8 @@ cudnn.enabled = True
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--gpu_id', type=int, default=0, help='gpu id for network')
-parser.add_argument('--batch_size_train', type=int, default=6,
+parser.add_argument('--gpu_id', type=int, default=1, help='gpu id for network')
+parser.add_argument('--batch_size_train', type=int, default=16,
                     help='Batch Size during training [default: 32]')
 parser.add_argument('--batch_size_val', type=int, default=16,
                     help='Batch Size during training [default: 32]')
@@ -57,12 +57,13 @@ parser.add_argument("--cha", type=float, default=1.0,
                     help="Smooth term for translation, default=-7")
 parser.add_argument('--log', help='Log to FILE in save folder; use - for stdout (default is log.txt)', metavar='FILE',
                     default='log.txt')
-parser.add_argument('--num_point', help='downsample number before feed to net', type=int, default=8192)
+parser.add_argument('--num_point', help='downsample number before feed to net', type=int, default=4096)
 parser.add_argument('--step_val', help='downsample number before feed to net', type=int, default=200000)
 parser.add_argument('--model_name', '-m', default='pointsemantic_cross', help='Model to use')
 parser.add_argument('--use_normals', action='store_true')
 parser.add_argument("--train_set", default="train", help="train, train_full")
 parser.add_argument("--dataset_name", default="semantic_plus_npm", help="npm, semantic")
+parser.add_argument('--weight_decay', default=1e-4, help="decay rate, default=1e-4")
 args = parser.parse_args()
 
 GPU_ID = args.gpu_id
@@ -82,6 +83,7 @@ LOG = args.log
 NUM_POINT = args.num_point
 USE_NORMALS = args.use_normals
 DATASET_NAME = args.dataset_name
+WEIGHT_DECAY = args.weight_decay
 
 train_augmentations = get_augmentations_from_list(TRAIN_AUGMENTATION)
 
@@ -166,9 +168,8 @@ def update_progress(progress):
 def get_batch(split):
     np.random.seed()
     if split == "train":
-        return TRAIN_DATASET.sample_batch_in_all_files(BATCH_SIZE_TRAIN,
-                                                       augment=True), NPM_VALIDATION_DATASET.sample_batch_in_all_files(
-            BATCH_SIZE_TRAIN, augment=True)
+        return TRAIN_DATASET.sample_batch_in_all_files(BATCH_SIZE_TRAIN,augment=True),\
+               NPM_VALIDATION_DATASET.sample_batch_in_all_files(BATCH_SIZE_TRAIN, augment=True)
     else:
         return VALIDATION_DATASET.sample_batch_in_all_files(
             BATCH_SIZE_VAL, augment=False
@@ -341,7 +342,7 @@ def eval_one_epoch(stack, model, criterion, device, val_writer):
             "IoU of %s : %f" % (VALIDATION_DATASET.labels_names[i], iou_per_class[i])
         )
 
-    return confusion_matrix.get_accuracy()
+    return confusion_matrix.get_mean_iou()
 
 
 def train():
@@ -350,9 +351,10 @@ def train():
     train_writer = SummaryWriter(os.path.join(root_folder, SUMMARY_LOG_DIR, 'train'))
     val_writer = SummaryWriter(os.path.join(root_folder, SUMMARY_LOG_DIR, 'val'))
 
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(GPU_ID)
     # set model and criterion
     if torch.cuda.is_available():
-        device = torch.device("cuda:%d" % GPU_ID)
+        device = torch.device("cuda")
     else:
         raise ValueError("GPU not found!")
     label_weights_tensor = torch.from_numpy(label_weights).to(device)
@@ -361,9 +363,9 @@ def train():
     criterion = criterion.to(device)
 
     if MODEL_OPTIMIZER == 'momentum':
-        optimizer = torch.optim.SGD(model.parameters(), INIT_LEARNING_RATE)
+        optimizer = torch.optim.SGD(model.parameters(), INIT_LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     elif MODEL_OPTIMIZER == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), INIT_LEARNING_RATE)
+        optimizer = torch.optim.Adam(model.parameters(), INIT_LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     else:
         optimizer = None
         exit(0)
@@ -380,6 +382,7 @@ def train():
         scheduler.load_state_dict(checkpoint['scheduler'])
     else:
         start_epoch = 0
+
     EPOCH_CNT = start_epoch
     LOG_FOUT.write("\n")
     LOG_FOUT.flush()
@@ -388,7 +391,7 @@ def train():
 
     # start training
     stacker, stack_validation, stack_train = init_stacking()
-    best_acc = 0
+    best_mIoU = 0
     for epoch in range(start_epoch, MAX_EPOCH):
         print("in epoch", epoch)
         print("max_epoch", MAX_EPOCH)
@@ -400,10 +403,10 @@ def train():
         train_one_epoch(stack_train, scheduler, model, criterion, device, train_writer)
         # Evaluate, save, and compute the accuracy
         if epoch % 5 == 0:
-            acc = eval_one_epoch(stack_validation, model, criterion, device, val_writer)
-            save_path = os.path.join(root_folder, 'checkpoint_epoch%d_acc%.2f.tar' % (epoch, acc))
-            if acc > best_acc:
-                best_acc = acc
+            mIoU = eval_one_epoch(stack_validation, model, criterion, device, val_writer)
+            save_path = os.path.join(root_folder, 'checkpoint_epoch%d_iou%.2f.tar' % (epoch, mIoU))
+            if mIoU > best_mIoU:
+                best_mIoU = mIoU
                 torch.save({
                     'epoch': epoch + 1,
                     'state_dict': model.state_dict(),

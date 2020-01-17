@@ -32,7 +32,8 @@ def get_graph_feature(x, k=20, idx=None):
     x = x.view(batch_size, -1, num_points)
     if idx is None:
         idx = knn(x, k=k)  # (batch_size, num_points, k)
-    device = torch.device('cuda')
+    # device = torch.device('cuda')
+    device = x.device
 
     idx_base = torch.arange(0, batch_size, device=device).view(-1, 1, 1) * num_points  # (B, 1, 1)
 
@@ -172,10 +173,10 @@ class EdgeConv(nn.Module):
     def forward(self, x, k):
         """
 
-        :param x: tensor(B, num_dim, N)
-        :return: tensor(B, 2*dim, N)
+        :param x: tensor(B, in_channel / 2, N)
+        :return: tensor(B, channel_list[-1], N)
         """
-        x = get_graph_feature(x, k=k)  # (B, 2*num_dim, N, k)
+        x = get_graph_feature(x, k=k)  # (B, in_channel, N, k)
         for i, conv in enumerate(self.mlp_convs):
             bn = self.mlp_bns[i]
             x = F.leaky_relu(bn(conv(x)), negative_slope=0.2)  # (B, mlp[-1], N, k)

@@ -219,12 +219,12 @@ def GridSamplingLayer(batch_size, meshgrid):
     }
     '''
 
-    ret = np.meshgrid(*[np.linspace(it[0], it[1], num=it[2]) for it in meshgrid])
-    ndim = len(meshgrid)
-    grid = np.zeros((np.prod([it[2] for it in meshgrid]), ndim), dtype=np.float32)  # MxD
+    ret = np.meshgrid(*[np.linspace(it[0], it[1], num=it[2]) for it in meshgrid])  # (45, 45)
+    ndim = len(meshgrid)  # scalar 2
+    grid = np.zeros((np.prod([it[2] for it in meshgrid]), ndim), dtype=np.float32)  # (45*45, ndim)
     for d in range(ndim):
         grid[:, d] = np.reshape(ret[d], -1)
-    g = np.repeat(grid[np.newaxis, ...], repeats=batch_size, axis=0)
+    g = np.repeat(grid[np.newaxis, ...], repeats=batch_size, axis=0)  # (B, 45*45, ndim)
 
     return g
 
@@ -247,7 +247,7 @@ class FoldingNetDec(nn.Module):
         grid = torch.from_numpy(grid)
 
         if x.is_cuda:
-            grid = grid.cuda()
+            grid = grid.to(x.device)
 
         x = torch.cat((x, grid), 2)  # x = batch,45^2,514
         x = x.transpose(2, 1)  # x = batch,514,45^2

@@ -87,7 +87,7 @@ def select_model(model_name, num_classes, params, weights=None):
         criterion = PointnetCriterion(weights=weights)
     elif model_name == 'pointsemantic':
         if params['use_geometry']:
-            addition_channel = 1
+            addition_channel = 2
         else:
             addition_channel = 0
         model = PointSemantic(num_classes, with_rgb=params['use_color'], addition_channel=addition_channel)

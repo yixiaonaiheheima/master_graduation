@@ -3,7 +3,8 @@ import torch
 import torch.nn.parallel
 import torch.nn.functional as F
 from utils.folding_utils import FoldingNetDec
-from utils.cross_util import PNSADenseNet, PNFPDenseNet
+# from utils.cross_util import PNSADenseNet, PNFPDenseNet
+from utils.pointnet_util import PNSADenseNet, PNFPDenseNet
 
 
 class PointSemantic_cross(nn.Module):
@@ -13,6 +14,7 @@ class PointSemantic_cross(nn.Module):
         self.feature_channel = addition_channel
         if with_rgb:
             self.feature_channel += 3
+        print("feature_channel in PointSemantic_cross is %d" % self.feature_channel)
         # Encoder
         self.conv0 = nn.Conv1d(self.feature_channel + 3, 32, 1)
         self.bn0 = nn.BatchNorm1d(32)
@@ -47,7 +49,7 @@ class PointSemantic_cross(nn.Module):
         self.drop1 = nn.Dropout(0.5)
         self.convs2 = nn.Conv1d(128, num_classes, 1)
 
-        # reconsitution-npm3d
+        # reconstruction-npm3d
         self.fold = FoldingNetDec(64)
         # self.fc1 = nn.Linear(512, 1024)
         # self.bnfc1 = nn.BatchNorm1d(1024)

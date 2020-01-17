@@ -109,6 +109,7 @@ import torch.nn.functional as F
 
 class SegBig(nn.Module):
     def __init__(self, input_channels, output_channels, dimension=3, args={}):
+        print(f"input_channel in conv point is {input_channels}")
         super(SegBig, self).__init__()
 
         n_centers = 16

@@ -364,9 +364,10 @@ def train():
     train_writer = SummaryWriter(os.path.join(root_folder, SUMMARY_LOG_DIR, 'train'))
     val_writer = SummaryWriter(os.path.join(root_folder, SUMMARY_LOG_DIR, 'val'))
 
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(GPU_ID)
     # set model and criterion
     if torch.cuda.is_available():
-        device = torch.device("cuda:%d" % GPU_ID)
+        device = torch.device("cuda")
     else:
         raise ValueError("GPU not found!")
     label_weights_tensor = torch.from_numpy(label_weights).to(device)
