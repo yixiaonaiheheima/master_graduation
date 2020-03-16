@@ -82,8 +82,8 @@ class PointSemantic_cross(nn.Module):
             l0_points1 = None
             l0_points2 = None
 
-        l0_points1 = l0_xyz1.permute(0, 2, 1)
-        l0_points2 = l0_xyz2.permute(0, 2, 1)
+        l0_points1 = l0_xyz1.permute(0, 2, 1)  # (B, 3, N)
+        l0_points2 = l0_xyz2.permute(0, 2, 1)  # (B, 3, N)
         l0_points1 = F.relu(self.bn0(self.conv0(l0_points1)))
         l0_points2 = F.relu(self.bn0(self.conv0(l0_points2)))
         l0_points1 = l0_points1.permute(0, 2, 1)

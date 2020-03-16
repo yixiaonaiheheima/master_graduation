@@ -104,7 +104,12 @@ class Mapping2Dto3D(nn.Module):
         self.activation = get_activation(opt.activation)
 
     def forward(self, x, latent):
-        x = self.conv1(x) + latent
+        """
+        x: tensor(1, 3, nb_pts_in_primitive)
+        lantent: tensor(B, bottleneck_size, 1)
+        return: tensor(B, 3,  nb_pts_in_primitive)
+        """
+        x = self.conv1(x) + latent  # (B, bottleneck_size, nb_pts_in_primitive)
         x = self.activation(self.bn1(x))
         x = self.activation(self.bn2(self.conv2(x)))
         for i in range(self.opt.num_layers):

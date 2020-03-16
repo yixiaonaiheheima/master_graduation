@@ -4,6 +4,8 @@ import torch.nn.parallel
 import torch.utils.data
 from utils.model_blocks import Mapping2Dto3D, Identity, get_template
 
+dim_template_dict = {"SQUARE": 2, "SPHERE": 3}
+
 
 class args():
     def __init__(self):
@@ -12,12 +14,13 @@ class args():
         self.number_points_eval = 4096
         self.num_layers = 2
         self.hidden_neurons = 512
-        self.nb_primitives = 5
+        self.nb_primitives = 4
         self.template_type = 'SPHERE'
         self.bottleneck_size = 1024
         self.activation = 'relu'
         self.device = 'cuda'
         self.remove_all_batchNorms = False
+        self.dim_template = dim_template_dict[self.template_type]
 
 
 class Atlasnet(nn.Module):
@@ -52,7 +55,7 @@ class Atlasnet(nn.Module):
         """
         Deform points from self.template using the embedding latent_vector
         :param latent_vector: an opt.bottleneck size vector encoding a 3D shape or an image. size : batch, bottleneck
-        :return: A deformed pointcloud of size : batch, nb_prim, num_point, 3
+        :return: A deformed pointcloud of size : batch, 3, nb_pts_in_primitive * nb_ptimitives
         """
         # Sample points in the patches
         # input_points = [self.template[i].get_regular_points(self.nb_pts_in_primitive,
@@ -67,4 +70,4 @@ class Atlasnet(nn.Module):
                                    range(0, self.opt.nb_primitives)], dim=-1)
 
         # Return the deformed pointcloud
-        return output_points.contiguous()  # batch, 3, N
+        return output_points.contiguous()  # (B, 3, nb_pts_in_primitive * nb_ptimitives)
