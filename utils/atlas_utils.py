@@ -4,6 +4,8 @@ import torch.nn.parallel
 import torch.utils.data
 from utils.model_blocks import Mapping2Dto3D, Identity, get_template
 
+dim_template_dict = {"SQUARE": 2, "SPHERE": 3}
+
 
 class args():
     def __init__(self):
@@ -18,6 +20,7 @@ class args():
         self.activation = 'relu'
         self.device = 'cuda'
         self.remove_all_batchNorms = False
+        self.dim_template = dim_template_dict[self.template_type]
 
 
 class Atlasnet(nn.Module):
