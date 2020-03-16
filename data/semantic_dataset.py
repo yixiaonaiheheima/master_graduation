@@ -85,14 +85,10 @@ class SemanticFileData:
 
         # load geometry features. If not use_geometr, fill with zeros
         if use_geometry:
-            h5_path = file_path_without_ext + '.h5'
+            h5_path = file_path_without_ext + '_v3.h5'
             assert(os.path.exists(h5_path))
             h5_file = h5py.File(h5_path, 'r')
-            geometry = h5_file['geometry_features'][...]
-            geometry_mean = np.mean(geometry, 0, keepdims=True)  # (1, 7)
-            geometry = geometry - geometry_mean
-            geometry_std = np.std(geometry, axis=0, keepdims=True)  # (1, 7)
-            self.geometry = geometry / geometry_std  # (N, 7)
+            self.geometry = h5_file['geometry_features'][...]  # (N, 7)
         else:
             self.geometry = np.zeros((self.points.shape[0], 7), dtype=np.float32)
 
