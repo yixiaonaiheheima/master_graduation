@@ -181,6 +181,24 @@ class PointCapsNetDecoder(nn.Module):
         return reconstructions
 
 
+class DecodeFromVec(nn.Module):
+    def __init__(self, prim_caps_size, prim_vec_size, latent_caps_size, latent_vec_size, num_points):
+        super(DecodeFromVec, self).__init__()
+        self.primary_point_caps_layer = PrimaryPointCapsLayer(prim_vec_size, num_points)
+        self.latent_caps_layer = LatentCapsLayer(latent_caps_size, prim_caps_size, prim_vec_size, latent_vec_size)
+        self.caps_decoder = CapsDecoder(latent_caps_size, latent_vec_size, num_points)
+
+    def forward(self, data):
+        """
+        data: tensor(B, 128, N), temper vector from encoder
+        """
+        x1 = data
+        x2 = self.primary_point_caps_layer(x1)  # (B, 1024, prim_vec_size)
+        latent_capsules = self.latent_caps_layer(x2)  # (B, latent_caps_size, latent_vec_size)
+        reconstructions = self.caps_decoder(latent_capsules)  # (B, 3, N)
+        return latent_capsules, reconstructions
+
+
 if __name__ == '__main__':
     USE_CUDA = True
     batch_size = 8
