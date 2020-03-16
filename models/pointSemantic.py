@@ -3,7 +3,8 @@ import torch
 import torch.nn.parallel
 import torch.nn.functional as F
 from utils.folding_utils import FoldingNetDec
-from utils.pointnet_util import PNSADenseNet, PNFPDenseNet
+# from utils.pointnet_util import PNSADenseNet, PNFPDenseNet
+from utils.cross_util import PNSADenseNet, PNFPDenseNet
 
 
 class PointSemantic(nn.Module):
