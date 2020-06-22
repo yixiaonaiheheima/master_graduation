@@ -16,14 +16,14 @@ class args():
         self.hidden_neurons = 512
         self.nb_primitives = 4
         self.template_type = 'SPHERE'
-        self.bottleneck_size = 1024
+        self.bottleneck_size = 512
         self.activation = 'relu'
         self.device = 'cuda'
         self.remove_all_batchNorms = False
         self.dim_template = dim_template_dict[self.template_type]
 
 
-class Atlasnet(nn.Module):
+class AtlasDec(nn.Module):
 
     def __init__(self):
         """
@@ -32,7 +32,7 @@ class Atlasnet(nn.Module):
         Author : Thibault Groueix 01.11.2019
         :param opt: 
         """
-        super(Atlasnet, self).__init__()
+        super(AtlasDec, self).__init__()
         opt = args()
         self.opt = opt
         # self.device = opt.device

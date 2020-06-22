@@ -68,7 +68,7 @@ class Criterion_cross(nn.Module):
     def __init__(self, weights=None):
         super(Criterion_cross, self).__init__()
         self.seg = 1
-        self.cha = 1
+        self.cha = 0.1
         self.label_weights = weights
 
     def forward(self, seg_prob, seg_label, point_rec, point_ori):

@@ -10,7 +10,12 @@ import h5py
 from utils.basics_util import compute_geometry_feature
 from data.npm_dataset import npm_all_file_prefixes
 from data.semantic_dataset import all_file_prefixes as semantic_all_file_prefixes
+import argparse
 
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--dataset_name', type=str, default='semantic', help='semantic or npm')
+FLAGS = parser.parse_args()
 
 def generate_geometry(root_folder, file_list):
     for file in file_list:
@@ -38,8 +43,14 @@ def generate_geometry(root_folder, file_list):
 
 
 if __name__ == '__main__':
-    root_folder = "/home/yss/sda1/yzl/Data/semantic_downsampled"
-    file_list = semantic_all_file_prefixes
+    if FLAGS.dataset_name == 'semantic':
+        root_folder = "/home/yss/sda1/yzl/Data/semantic_downsampled"
+        file_list = semantic_all_file_prefixes
+    elif FLAGS.dataset_name == 'npm':
+        root_folder = "/home/yss/sda1/yzl/Data/npm_downsampled"
+        file_list = npm_all_file_prefixes
+    else:
+        raise ValueError("dataset name error, you should input semantic or npm!")
     generate_geometry(root_folder, file_list)
 
 

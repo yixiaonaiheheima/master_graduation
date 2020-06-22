@@ -8,7 +8,11 @@ from data.npm_dataset import npm_all_file_prefixes
 from plyfile import PlyData
 import numpy as np
 from utils.point_cloud_util import write_labels
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--dataset_name', type=str, default='semantic', help='semantic or npm')
+FLAGS = parser.parse_args()
 
 def wc(file_name):
     out = subprocess.Popen(
@@ -93,18 +97,19 @@ def point_cloud_ply_to_pcd(raw_dir, file_prefix):
 
 
 if __name__ == "__main__":
-    # By default
-    # raw data: "dataset/semantic_raw"
-    # current_dir = os.path.dirname(os.path.realpath(__file__))
-    # dataset_dir = os.path.join(current_dir, "dataset")
-    # raw_dir = os.path.join(dataset_dir, "semantic_raw")
-    #
-    # for file_prefix in all_file_prefixes:
-    #     point_cloud_txt_to_pcd(raw_dir, file_prefix)
+    if FLAGS.dataset_name == 'semantic':
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        dataset_dir = os.path.join(current_dir, "dataset")
+        raw_dir = os.path.join(dataset_dir, "semantic_raw")
 
-    # npm preprocess
-    dataset_dir = "/home/yss/sda1/yzl/Data"
-    raw_dir = os.path.join(dataset_dir, "npm_raw")
+        for file_prefix in all_file_prefixes:
+            point_cloud_txt_to_pcd(raw_dir, file_prefix)
 
-    for file_prefix in npm_all_file_prefixes:
-        point_cloud_ply_to_pcd(raw_dir, file_prefix)
+    elif FLAGS.dataset_name == 'npm':
+        dataset_dir = "/home/yss/sda1/yzl/Data"
+        raw_dir = os.path.join(dataset_dir, "npm_raw")
+
+        for file_prefix in npm_all_file_prefixes:
+            point_cloud_ply_to_pcd(raw_dir, file_prefix)
+    else:
+        raise ValueError("dataset name error, you should input semantic or npm!")

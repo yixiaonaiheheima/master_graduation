@@ -13,11 +13,11 @@ from sklearn.neighbors import KDTree
 def func1():
     return (3, 4), (2, 3)
 
-# folder = '/home/yss/sda1/yzl/Data/semantic_raw'
-# h5_fname = 'bildstein_station1_xyz_intensity_rgb.h5'
-# h5_path = os.path.join(folder, h5_fname)
-# h5_file = h5py.File(h5_path, 'r')
-# geometry = h5_file['geometry_features'][...]
+folder = '/home/yss/sda1/yzl/Data/semantic_downsampled'
+h5_fname = 'bildstein_station1_xyz_intensity_rgb_v3.h5'
+h5_path = os.path.join(folder, h5_fname)
+h5_file = h5py.File(h5_path, 'r')
+geometry = h5_file['geometry_features'][...]
 # pcd_fname = 'bildstein_station1_xyz_intensity_rgb.pcd'
 # pcd_path = os.path.join(folder, pcd_fname)
 # pcd_file = open3d.io.read_point_cloud(pcd_path)

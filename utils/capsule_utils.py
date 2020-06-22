@@ -46,6 +46,7 @@ class PrimaryPointCapsLayer(nn.Module):
                 ('mp1', torch.nn.MaxPool1d(num_points)),
             ]))
             for _ in range(prim_vec_size)])
+        self.zero_times = 0
 
     def forward(self, x):
         u = [capsule(x) for capsule in self.capsules]
@@ -54,6 +55,11 @@ class PrimaryPointCapsLayer(nn.Module):
 
     def squash(self, input_tensor):
         squared_norm = (input_tensor ** 2).sum(-1, keepdim=True)  # (B, 1024, 1)
+        if torch.any(squared_norm < 1e-6):
+            self.zero_times += 1
+            if self.zero_times % 100 == 1:
+                print("squash meet dividing zero %d times in PrimaryPointCapsLayer!" % self.zero_times)
+            squared_norm = squared_norm.clamp_min(1e-6)
         output_tensor = squared_norm * input_tensor / ((1. + squared_norm) * torch.sqrt(squared_norm))
         if output_tensor.dim() == 2:
             output_tensor = torch.unsqueeze(output_tensor, 0)
@@ -67,6 +73,7 @@ class LatentCapsLayer(nn.Module):
         self.prim_caps_size = prim_caps_size
         self.latent_caps_size = latent_caps_size
         self.W = nn.Parameter(0.01 * torch.randn(latent_caps_size, prim_caps_size, latent_vec_size, prim_vec_size))
+        self.zero_times = 0
 
     def forward(self, x):
         """
@@ -88,6 +95,11 @@ class LatentCapsLayer(nn.Module):
 
     def squash(self, input_tensor):
         squared_norm = (input_tensor ** 2).sum(-1, keepdim=True)
+        if torch.any(squared_norm < 1e-6):
+            self.zero_times += 1
+            if self.zero_times % 100 == 1:
+                print("squash meet dividing zero %d times in LatentCapsLayer!" % self.zero_times)
+            squared_norm = squared_norm.clamp_min(1e-6)
         output_tensor = squared_norm * input_tensor / ((1. + squared_norm) * torch.sqrt(squared_norm))
         return output_tensor
 
@@ -182,7 +194,7 @@ class PointCapsNetDecoder(nn.Module):
 
 
 class DecodeFromVec(nn.Module):
-    def __init__(self, prim_caps_size, prim_vec_size, latent_caps_size, latent_vec_size, num_points):
+    def __init__(self, prim_caps_size=1024, prim_vec_size=16, latent_caps_size=64, latent_vec_size=64, num_points=4096):
         super(DecodeFromVec, self).__init__()
         self.primary_point_caps_layer = PrimaryPointCapsLayer(prim_vec_size, num_points)
         self.latent_caps_layer = LatentCapsLayer(latent_caps_size, prim_caps_size, prim_vec_size, latent_vec_size)
@@ -196,7 +208,7 @@ class DecodeFromVec(nn.Module):
         x2 = self.primary_point_caps_layer(x1)  # (B, 1024, prim_vec_size)
         latent_capsules = self.latent_caps_layer(x2)  # (B, latent_caps_size, latent_vec_size)
         reconstructions = self.caps_decoder(latent_capsules)  # (B, 3, N)
-        return latent_capsules, reconstructions
+        return reconstructions
 
 
 if __name__ == '__main__':

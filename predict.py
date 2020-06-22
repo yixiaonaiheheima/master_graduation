@@ -10,15 +10,15 @@ from data.npm_dataset import NpmDataset
 from utils.metric import ConfusionMatrix
 from utils.model_util import select_model, run_model
 from utils.eval_utils import _2common
-from utils.point_cloud_util import _label_to_colors
+from utils.point_cloud_util import _label_to_colors_by_name
 from tensorboardX import SummaryWriter
 
 
 # Parser
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu_id', type=int, default=1, help='gpu id for network')
-parser.add_argument("--num_samples", type=int, default=32, help="# samples, each contains num_point points_centered")
-parser.add_argument("--resume_model", default="/home/yss/sda1/yss/YZL/yzl_graduation_20191231/train_log/pointsemantic_cross_semantic_plus_npm1/checkpoint_epoch70_acc0.85.tar", help="restore checkpoint file storing model parameters")
+parser.add_argument("--num_samples", type=int, default=500, help="# samples, each contains num_point points_centered")
+parser.add_argument("--resume_model", default="/home/yss/sda1/yzl/yzl_graduation/train_log/PBC_pure_semantic_row40/checkpoint_epoch15_iou0.68.tar", help="restore checkpoint file storing model parameters")
 parser.add_argument("--config_file", default="semantic.json",
                     help="config file path, it should same with that during traing")
 parser.add_argument("--set", default="validation", help="train, validation, test")
@@ -34,10 +34,11 @@ print(flags)
 
 if __name__ == "__main__":
     np.random.seed(0)
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(flags.gpu_id)
     hyper_params = json.loads(open(flags.config_file).read())
 
     # Create output dir
-    sub_folder = flags.model_name + '_' + flags.from_dataset + '2' + flags.to_dataset
+    sub_folder = flags.model_name + '_' + flags.from_dataset + '2' + flags.to_dataset + '_' + flags.set
     output_dir = os.path.join("result", "sparse", sub_folder)
     os.makedirs(output_dir, exist_ok=True)
 
@@ -67,7 +68,7 @@ if __name__ == "__main__":
 
     # Model
     if torch.cuda.is_available():
-        device = torch.device("cuda:%d" % flags.gpu_id)
+        device = torch.device("cuda")
     else:
         raise ValueError("GPU not found!")
     batch_size = flags.batch_size
@@ -130,10 +131,11 @@ if __name__ == "__main__":
             input_tensor = torch.from_numpy(point_cloud).to(device, dtype=torch.float32)  # (current_batch_size, N, 3)
             with torch.no_grad():
                 res = run_model(model, input_tensor, hyper_params, flags.model_name, return_embed=True)  # (current_batch_size, N)
-            if flags.model_name == 'pointsemantic':
+            if flags.model_name in ['pointsemantic', 'pointsemantic_dense', 'PBC_pure']:
                 pd_prob, embedding = res
-            elif flags.model_name == 'pointsemantic_cross':
-                pd_prob, reconstructio = res
+            elif flags.model_name in ['pointsemantic_folding', 'pointsemantic_atlas', 'pointsemantic_caps',
+                                      'PBC_folding', 'PBC_atlas', 'PBC_caps']:
+                pd_prob, reconstruction = res
             else:
                 pd_prob = res
             _, pd_labels = torch.max(pd_prob, dim=2)  # (B, N)
@@ -172,7 +174,7 @@ if __name__ == "__main__":
         sparse_common_labels = np.array(pd_common_labels_collector).flatten()  # (B*N,)
         pcd_common = open3d.geometry.PointCloud()
         pcd_common.points = open3d.utility.Vector3dVector(sparse_points)
-        pcd_common.colors = open3d.utility.Vector3dVector(_label_to_colors(sparse_common_labels))
+        pcd_common.colors = open3d.utility.Vector3dVector(_label_to_colors_by_name(sparse_common_labels, 'common'))
         pcd_path = os.path.join(output_dir, file_prefix + "_common.pcd")
         open3d.io.write_point_cloud(pcd_path, pcd_common)
         print("Exported sparse common pcd to {}".format(pcd_path))
@@ -190,7 +192,7 @@ if __name__ == "__main__":
         sparse_labels = np.array(pd_labels_collector).astype(int).flatten()  # (B*N,)
         pcd_ori = open3d.geometry.PointCloud()
         pcd_ori.points = open3d.utility.Vector3dVector(sparse_points)
-        pcd_ori.colors = open3d.utility.Vector3dVector(_label_to_colors(sparse_labels))
+        pcd_ori.colors = open3d.utility.Vector3dVector(_label_to_colors_by_name(sparse_labels, flags.from_dataset))
         pcd_ori_path = os.path.join(output_dir, file_prefix + '_' + flags.from_dataset + ".pcd")
         open3d.io.write_point_cloud(pcd_ori_path, pcd_ori)
         print("Exported sparse pcd to {}".format(pcd_ori_path))

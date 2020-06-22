@@ -425,7 +425,7 @@ def get_cov(points):
 
 def compute_geometry_feature(cloud, num_neighbors=30, view_point=None):
     """
-
+	cite from 3DFeatNet computePointNormal
     :param cloud: ndarray (N, 3)
     :return: geometry_feature (N, 7), normal(N, 3)
     """

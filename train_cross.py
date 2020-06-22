@@ -57,12 +57,12 @@ parser.add_argument("--cha", type=float, default=1.0,
                     help="Smooth term for translation, default=-7")
 parser.add_argument('--log', help='Log to FILE in save folder; use - for stdout (default is log.txt)', metavar='FILE',
                     default='log.txt')
-parser.add_argument('--num_point', help='downsample number before feed to net', type=int, default=4096)
+parser.add_argument('--num_points', help='downsample number before feed to net', type=int, default=4096)
 parser.add_argument('--step_val', help='downsample number before feed to net', type=int, default=200000)
 parser.add_argument('--model_name', '-m', default='pointsemantic_cross', help='Model to use')
 parser.add_argument('--use_normals', action='store_true')
 parser.add_argument("--train_set", default="train", help="train, train_full")
-parser.add_argument("--dataset_name", default="semantic_plus_npm", help="npm, semantic")
+parser.add_argument("--dataset_name", default="semantic_plus_npm", help="semantic_plus_npm, npm_plus_semantic")
 parser.add_argument('--weight_decay', default=1e-4, help="decay rate, default=1e-4")
 args = parser.parse_args()
 
@@ -80,7 +80,7 @@ LR_DECAY_STEP = args.lr_decay_step
 LR_DECAY_RATE = args.lr_decay_rate
 MODEL_NAME = args.model_name
 LOG = args.log
-NUM_POINT = args.num_point
+NUM_POINT = args.num_points
 USE_NORMALS = args.use_normals
 DATASET_NAME = args.dataset_name
 WEIGHT_DECAY = args.weight_decay
@@ -92,35 +92,66 @@ root_folder = SAVE_FOLDER
 if not os.path.exists(root_folder):
     os.makedirs(root_folder)
 
-PARAMS = json.loads(open("semantic_no_color.json").read())
 # Import dataset
-TRAIN_DATASET = SemanticDataset(
-    num_points_per_sample=NUM_POINT,
-    split=args.train_set,
-    box_size_x=PARAMS["box_size_x"],
-    box_size_y=PARAMS["box_size_y"],
-    use_color=PARAMS["use_color"],
-    use_geometry=PARAMS["use_geometry"],
-    path=PARAMS["data_path"],
-)
-VALIDATION_DATASET = SemanticDataset(
-    num_points_per_sample=NUM_POINT,
-    split="validation",
-    box_size_x=PARAMS["box_size_x"],
-    box_size_y=PARAMS["box_size_y"],
-    use_color=PARAMS["use_color"],
-    use_geometry=PARAMS["use_geometry"],
-    path=PARAMS["data_path"],
-)
-NPM_PARAMS = json.loads(open("npm.json").read())
-NPM_VALIDATION_DATASET = NpmDataset(
-    num_points_per_sample=NUM_POINT,
-    split="validation",
-    box_size_x=NPM_PARAMS["box_size_x"],
-    box_size_y=NPM_PARAMS["box_size_y"],
-    use_geometry=NPM_PARAMS["use_geometry"],
-    path=NPM_PARAMS["data_path"],
-)
+if DATASET_NAME == 'semantic_plus_npm':
+    PARAMS = json.loads(open("semantic_no_color.json").read())
+    TRAIN_DATASET = SemanticDataset(
+        num_points_per_sample=NUM_POINT,
+        split=args.train_set,
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_color=PARAMS["use_color"],
+        use_geometry=PARAMS["use_geometry"],
+        path=PARAMS["data_path"],
+    )
+    VALIDATION_DATASET = SemanticDataset(
+        num_points_per_sample=NUM_POINT,
+        split="validation",
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_color=PARAMS["use_color"],
+        use_geometry=PARAMS["use_geometry"],
+        path=PARAMS["data_path"],
+    )
+    ANOTHER_PARAMS = json.loads(open("npm.json").read())
+    ANOTHER_VALIDATION_DATASET = NpmDataset(
+        num_points_per_sample=NUM_POINT,
+        split="validation",
+        box_size_x=ANOTHER_PARAMS["box_size_x"],
+        box_size_y=ANOTHER_PARAMS["box_size_y"],
+        use_geometry=ANOTHER_PARAMS["use_geometry"],
+        path=ANOTHER_PARAMS["data_path"],
+    )
+elif DATASET_NAME == 'npm_plus_semantic':
+    PARAMS = json.loads(open("npm.json").read())
+    TRAIN_DATASET = NpmDataset(
+        num_points_per_sample=NUM_POINT,
+        split=args.train_set,
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_geometry=PARAMS["use_geometry"],
+        path=PARAMS["data_path"],
+    )
+    VALIDATION_DATASET = NpmDataset(
+        num_points_per_sample=NUM_POINT,
+        split="validation",
+        box_size_x=PARAMS["box_size_x"],
+        box_size_y=PARAMS["box_size_y"],
+        use_geometry=PARAMS["use_geometry"],
+        path=PARAMS["data_path"],
+    )
+    ANOTHER_PARAMS = json.loads(open("semantic_no_color.json").read())
+    ANOTHER_VALIDATION_DATASET = SemanticDataset(
+        num_points_per_sample=NUM_POINT,
+        split="validation",
+        use_color=ANOTHER_PARAMS["use_color"],
+        box_size_x=ANOTHER_PARAMS["box_size_x"],
+        box_size_y=ANOTHER_PARAMS["box_size_y"],
+        use_geometry=ANOTHER_PARAMS["use_geometry"],
+        path=ANOTHER_PARAMS["data_path"],
+    )
+else:
+    raise ValueError
 
 num_classes = TRAIN_DATASET.num_classes
 label_weights = TRAIN_DATASET.label_weights
@@ -168,8 +199,8 @@ def update_progress(progress):
 def get_batch(split):
     np.random.seed()
     if split == "train":
-        return TRAIN_DATASET.sample_batch_in_all_files(BATCH_SIZE_TRAIN,augment=True),\
-               NPM_VALIDATION_DATASET.sample_batch_in_all_files(BATCH_SIZE_TRAIN, augment=True)
+        return TRAIN_DATASET.sample_batch_in_all_files(BATCH_SIZE_TRAIN, augment=True),\
+               ANOTHER_VALIDATION_DATASET.sample_batch_in_all_files(BATCH_SIZE_TRAIN, augment=True)
     else:
         return VALIDATION_DATASET.sample_batch_in_all_files(
             BATCH_SIZE_VAL, augment=False
@@ -196,7 +227,7 @@ def fill_queues(
         if stack_train.qsize() + launched_train < num_train_batches:
             results_train.append(pool.apply_async(get_batch, args=("train",)))
             launched_train += 1
-        elif stack_validation.qsize() + launched_validation < num_validation_batches:
+        if stack_validation.qsize() + launched_validation < num_validation_batches:
             results_validation.append(pool.apply_async(get_batch, args=("validation",)))
             launched_validation += 1
         for p in results_train:
@@ -255,16 +286,16 @@ def train_one_epoch(stack, scheduler, model, criterion, device, train_writer):
         # Refill more batches if empty
         progress = float(batch_idx) / float(num_batches)
         update_progress(round(progress, 2))
-        (batch_data, batch_label, batch_weights), (npm_batch_data, _, _) = stack.get()
+        (batch_data, batch_label, batch_weights), (another_batch_data, _, _) = stack.get()
 
         # Get predicted labels
         points_tensor = torch.from_numpy(batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
-        npm_points_tensor = torch.from_numpy(npm_batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
+        another_points_tensor = torch.from_numpy(another_batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
         batch_label_tensor = torch.from_numpy(batch_label).to(device, dtype=torch.long)  # (B, sample_num)
         scheduler.optimizer.zero_grad()
         model = model.train()
-        points_prob, npm_reconstructed = run_model(model, points_tensor, PARAMS, MODEL_NAME, another_input=npm_points_tensor)  # (B, sample_num, num_classes), (B, sample_num, 3)
-        batch_loss = criterion(points_prob, batch_label_tensor, npm_reconstructed, npm_points_tensor)
+        points_prob, another_reconstructed = run_model(model, points_tensor, PARAMS, MODEL_NAME, another_input=another_points_tensor)  # (B, sample_num, num_classes), (B, sample_num, 3)
+        batch_loss = criterion(points_prob, batch_label_tensor, another_reconstructed, another_points_tensor[:, :, :3])
         _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
         batch_loss.backward()
         scheduler.optimizer.step()
@@ -309,13 +340,13 @@ def eval_one_epoch(stack, model, criterion, device, val_writer):
         batch_data, batch_label, batch_weights = stack.get()
 
         # Get predicted labels
-        points_tensor = torch.from_numpy(batch_data).to(device, dtype=torch.float32)  # (B, sample_num, 3)
+        points_tensor = torch.from_numpy(batch_data).to(device, dtype=torch.float32)  # (B, sample_num, f)
         batch_label_tensor = torch.from_numpy(batch_label).to(device, dtype=torch.long)  # (B, sample_num)
         model = model.eval()
         with torch.no_grad():
             points_prob, reconstructed = run_model(model, points_tensor, PARAMS, MODEL_NAME,
                                                    another_input=points_tensor)  # (B, sample_num, num_classes), (B, sample_num, 3)
-            batch_loss = criterion(points_prob, batch_label_tensor, reconstructed, points_tensor)
+            batch_loss = criterion(points_prob, batch_label_tensor, reconstructed, points_tensor[:, :, :3])
         _, points_pred = torch.max(points_prob, dim=2)  # (B, sample_num)
 
         # Update metrics

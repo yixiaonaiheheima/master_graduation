@@ -266,9 +266,9 @@ class PNSADenseNet(nn.Module):
         self.nsample = nsample
         self.group_all = group_all
         self.normalize_radius = normalize_radius
-        self.pnsadensesnet = DenseNet2D(channel_list, seblock=True)
+        self.pnsadensesnet = DenseNet2D(channel_list, seblock=False)
         last_channel = channel_list[-1]
-        self.DAT = Attention(last_channel)
+        # self.DAT = Attention(last_channel)
 
     def forward(self, xyz, points):
         """
@@ -305,7 +305,7 @@ class PNFPDenseNet(nn.Module):
             channel_list: a list for input, middle and output data dimension
         """
         super(PNFPDenseNet, self).__init__()
-        self.pnfpdensesnet = DenseNet1D(channel_list, seblock=True)
+        self.pnfpdensesnet = DenseNet1D(channel_list, seblock=False)
 
     def forward(self, xyz1, xyz2, points1, points2):
         """
@@ -419,41 +419,41 @@ class FoldingNetDecoder(nn.Module):
         return f
 
 
-class FoldingNetShapes(nn.Module):
-    # add 3 shapes to choose and a learnable layer
-    def __init__(self, Folding1_dims, Folding2_dims):
-        super(FoldingNetShapes, self).__init__()
-        # Decoder Folding
-        self.box = make_box()  # 18 * 18 * 6 points
-        self.cylinder = make_cylinder()  # same as 1944
-        self.sphere = make_sphere()  # 1944 points
-        self.grid = torch.Tensor(np.hstack((self.box, self.cylinder, self.sphere)))
-
-        #     1st folding
-
-        self.Fold1 = FoldingNetSingle(Folding1_dims)
-        #     2nd folding
-        self.Fold2 = FoldingNetSingle(Folding2_dims)
-        self.N = 1944  # number of points needed to replicate codeword later; also points in Grid
-        self.fc = nn.Linear(9, 9, True)  # geometric transformation
-
-    def forward(self, points):
-        points = points.unsqueeze(1)  # Bx1xK
-        codeword = points.expand(-1, self.N, -1)  # BxNxK
-
-        # cat 2d grid and feature
-        B = codeword.shape[0]  # extract batch size
-        tmpGrid = self.grid.cuda()  # Nx9
-        tmpGrid = tmpGrid.unsqueeze(0)
-        tmpGrid = tmpGrid.expand(B, -1, -1)  # BxNx9
-        tmpGrid = self.fc(tmpGrid)  # transform
-
-        # 1st folding
-        f = torch.cat((tmpGrid, codeword), 2)  # BxNx(K+9)
-        f = self.Fold1.forward(f)  # BxNx3
-
-        # 2nd folding
-        f = torch.cat((f, codeword), 2)  # BxNx(K+3)
-        f = self.Fold2.forward(f)  # BxNx3
-
-        return f
+# class FoldingNetShapes(nn.Module):
+#     # add 3 shapes to choose and a learnable layer
+#     def __init__(self, Folding1_dims, Folding2_dims):
+#         super(FoldingNetShapes, self).__init__()
+#         # Decoder Folding
+#         self.box = make_box()  # 18 * 18 * 6 points
+#         self.cylinder = make_cylinder()  # same as 1944
+#         self.sphere = make_sphere()  # 1944 points
+#         self.grid = torch.Tensor(np.hstack((self.box, self.cylinder, self.sphere)))
+#
+#         #     1st folding
+#
+#         self.Fold1 = FoldingNetSingle(Folding1_dims)
+#         #     2nd folding
+#         self.Fold2 = FoldingNetSingle(Folding2_dims)
+#         self.N = 1944  # number of points needed to replicate codeword later; also points in Grid
+#         self.fc = nn.Linear(9, 9, True)  # geometric transformation
+#
+#     def forward(self, points):
+#         points = points.unsqueeze(1)  # Bx1xK
+#         codeword = points.expand(-1, self.N, -1)  # BxNxK
+#
+#         # cat 2d grid and feature
+#         B = codeword.shape[0]  # extract batch size
+#         tmpGrid = self.grid.cuda()  # Nx9
+#         tmpGrid = tmpGrid.unsqueeze(0)
+#         tmpGrid = tmpGrid.expand(B, -1, -1)  # BxNx9
+#         tmpGrid = self.fc(tmpGrid)  # transform
+#
+#         # 1st folding
+#         f = torch.cat((tmpGrid, codeword), 2)  # BxNx(K+9)
+#         f = self.Fold1.forward(f)  # BxNx3
+#
+#         # 2nd folding
+#         f = torch.cat((f, codeword), 2)  # BxNx(K+3)
+#         f = self.Fold2.forward(f)  # BxNx3
+#
+#         return f

@@ -2,9 +2,13 @@ import open3d
 import os
 import numpy as np
 from utils.point_cloud_util import load_labels, write_labels
-# from data.semantic_dataset import all_file_prefixes
+from data.semantic_dataset import all_file_prefixes
 from data.npm_dataset import npm_all_file_prefixes
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--dataset_name', type=str, default='semantic', help='semantic or npm')
+FLAGS = parser.parse_args()
 
 def down_sample(
     dense_pcd_path, dense_label_path, sparse_pcd_path, sparse_label_path, voxel_size, use_color=True
@@ -71,21 +75,22 @@ def down_sample(
 
 if __name__ == "__main__":
     voxel_size = 0.05
-
-    # By default
-    # raw data: "dataset/semantic_raw"
-    # downsampled data: "dataset/semantic_downsampled"
-    # current_dir = os.path.dirname(os.path.realpath(__file__))
-    # dataset_dir = os.path.join(current_dir, "dataset")
-    # raw_dir = os.path.join(dataset_dir, "semantic_raw")
-    # downsampled_dir = os.path.join(dataset_dir, "semantic_downsampled")
-
-    # downsample npm data
-    dataset_dir = "/home/yss/sda1/yzl/Data"
-    raw_dir = os.path.join(dataset_dir, "npm_raw")
-    downsampled_dir = os.path.join(dataset_dir, "npm_downsampled")
-    all_file_prefixes = npm_all_file_prefixes
-    use_color = False
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    if FLAGS.dataset_name == 'semantic':
+        # downsample semantic data
+        dataset_dir = os.path.join(current_dir, "dataset")
+        raw_dir = os.path.join(dataset_dir, "semantic_raw")
+        downsampled_dir = os.path.join(dataset_dir, "semantic_downsampled")
+        use_color = False
+    elif FLAGS.dataset_name == 'npm':
+        # downsample npm data
+        dataset_dir = "/home/yss/sda1/yzl/Data"
+        raw_dir = os.path.join(dataset_dir, "npm_raw")
+        downsampled_dir = os.path.join(dataset_dir, "npm_downsampled")
+        all_file_prefixes = npm_all_file_prefixes
+        use_color = False
+    else:
+        raise ValueError("dataset name error, you should input semantic or npm!")
 
     # Create downsampled_dir
     os.makedirs(downsampled_dir, exist_ok=True)

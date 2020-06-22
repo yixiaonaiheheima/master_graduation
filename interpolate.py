@@ -3,18 +3,18 @@ import os
 import glob
 import numpy as np
 from sklearn.neighbors import KDTree
-from utils.point_cloud_util import _label_to_colors
+from utils.point_cloud_util import _label_to_colors_by_name
 from utils.eval_utils import _2common
 from utils.point_cloud_util import load_labels
 from utils.metric import ConfusionMatrix
 
 
-model_name = 'pointsemantic'
-from_dataset = 'npm'
-to_dataset = 'npm'
+model_name = 'PBC_pure'
+from_dataset = 'semantic'
+to_dataset = 'semantic'
 
 root_folder = '/home/yss/sda1/yzl/yzl_graduation/result'
-sub_folder = model_name + '_' + from_dataset + '2' + to_dataset
+sub_folder = model_name + '_' + from_dataset + '2' + to_dataset + '_test'
 sparse_folder = os.path.join(root_folder, 'sparse', sub_folder)
 raw_folder = '/home/yss/sda1/yzl/Data/' + to_dataset + '_raw'
 dense_folder = os.path.join(root_folder, 'dense', sub_folder)
@@ -62,8 +62,8 @@ for prob_path in glob.glob(os.path.join(sparse_folder, '*.prob')):
         interpolated_label[start_idx:end_idx] = np.argmax(interpolated_prob, axis=-1)  # (batch_size,)
 
     interpolated_common_label = _2common(interpolated_label, from_dataset)  # (N1,)
-    interpolated_color = _label_to_colors(interpolated_label)  # (N1, 3)
-    interpolated_common_color = _label_to_colors(interpolated_common_label)  # (N1, 3)
+    interpolated_color = _label_to_colors_by_name(interpolated_label, from_dataset)  # (N1, 3)
+    interpolated_common_color = _label_to_colors_by_name(interpolated_common_label, 'common')  # (N1, 3)
     del interpolated_common_label
 
     # evaluate interpolation result if ground truth is available

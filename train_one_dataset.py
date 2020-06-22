@@ -57,7 +57,7 @@ parser.add_argument("--cha", type=float, default=1.0,
                     help="Smooth term for translation, default=-7")
 parser.add_argument('--log', help='Log to FILE in save folder; use - for stdout (default is log.txt)', metavar='FILE',
                     default='log.txt')
-parser.add_argument('--num_point', help='downsample number before feed to net', type=int, default=8192)
+parser.add_argument('--num_points', help='downsample number before feed to net', type=int, default=8192)
 parser.add_argument('--step_val', help='downsample number before feed to net', type=int, default=200000)
 parser.add_argument('--model_name', '-m', help='Model to use', required=True)
 parser.add_argument('--use_normals', action='store_true')
@@ -81,7 +81,7 @@ LR_DECAY_STEP = args.lr_decay_step
 LR_DECAY_RATE = args.lr_decay_rate
 MODEL_NAME = args.model_name
 LOG = args.log
-NUM_POINT = args.num_point
+NUM_POINT = args.num_points
 USE_NORMALS = args.use_normals
 DATASET_NAME = args.dataset_name
 WEIGHT_DECAY = args.weight_decay
@@ -211,7 +211,7 @@ def fill_queues(
         if stack_train.qsize() + launched_train < num_train_batches:
             results_train.append(pool.apply_async(get_batch, args=("train",)))
             launched_train += 1
-        elif stack_validation.qsize() + launched_validation < num_validation_batches:
+        if stack_validation.qsize() + launched_validation < num_validation_batches:
             results_validation.append(pool.apply_async(get_batch, args=("validation",)))
             launched_validation += 1
         for p in results_train:
